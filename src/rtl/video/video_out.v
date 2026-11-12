@@ -19,7 +19,7 @@
  pixel per clock of 28 MHz and one line per VGA line, half the size of the full screen in both
  directions. Machine 2 * row + column. A paper line comes from the line buffer of its machine, read
  from the SDRAM during the VGA line before it (q_go); the border has the colour of that native line
- (taken by the machine). The selected machine has a yellow frame, the machines that are not built
+ (taken by the machine). The selected machine has a frame of rim_col (OSD), the machines that are not built
  are grey. The picture of the quad view is the screen memory at the time of the fetch, not the beam
  of the machine: multicolour and border effects are not exact there.
 
@@ -43,6 +43,7 @@ module video_out #(
 	// mode: 1 the selected machine full screen, 0 the quad view; sel the selected machine
 	input wire full,
 	input wire [1:0] sel,
+	input wire [2:0] rim_col,     // colour of the frame of the selected machine {G, R, B}, bright
 
 	input wire [3:0] pix,
 
@@ -198,9 +199,9 @@ always @(posedge clk) begin
 			b <= 8'h00;
 		end
 	end else if (!full && qa_rim) begin
-		r <= 8'hFF;
-		g <= 8'hFF;
-		b <= 8'h00;
+		r <= rim_col[1] ? 8'hFF : 8'h00;
+		g <= rim_col[2] ? 8'hFF : 8'h00;
+		b <= rim_col[0] ? 8'hFF : 8'h00;
 	end else if (!full && qa_absent) begin
 		r <= 8'h30;
 		g <= 8'h30;

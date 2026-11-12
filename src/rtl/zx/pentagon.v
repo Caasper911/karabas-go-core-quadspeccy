@@ -12,7 +12,20 @@
  Memory (byte address in the bank of the machine):
    0x00000..0x1FFFF  RAM pages 0..7
    0x20000..0x2FFFF  ROM area, 16 KB per ROM: 0 = 128 editor, 1 = 48 BASIC (#7FFD bit 4),
-                     2, 3 reserved (TR-DOS, service); filled by the ROM loader of the top
+                     2 reserved (TR-DOS), 3 the ESXDOS ROM of the DivMMC (8 KB); filled by the ROM
+                     loader of the top
+   0x80000..0xFFFFF  DivMMC RAM, 64 banks of 8 KB
+
+ DivMMC (divmmc_en): ports #E3 (7 CONMEM, 6 MAPRAM, 5..0 the RAM bank at 2000), #E7 (bit 0 the card
+ select), #EB (SPI: a write sends the byte, a read gives the byte of the exchange before and sends
+ FF). Mapped (CONMEM or automap): 0000-1FFF the ESXDOS ROM (with MAPRAM: RAM bank 3, read only),
+ 2000-3FFF the RAM bank (read only with MAPRAM and bank 3). Automap on the opcode fetch of 0000,
+ 0008, 0038, 0066, 04C6, 0562 (after the fetch) and 3D00-3DFF (the fetch itself, any ROM); off after
+ the fetch of 1FF8-1FFF. As divmmc.vhd of divgmx (MVV): a reset of the machine keeps #E3 and the
+ automap state (power on clears them; a reset with NMI held clears #E3). MAPRAM is only cleared by a power on (or DivMMC off). The SPI master runs at
+ 7 MHz (4 clocks per bit, mode 0) to the card of the board or kg_sd_emu (the top chooses). The CPU
+ waits on an access of #EB while an exchange is running or the emulated card waits for the MCU
+ (sd_wait).
 
  CPU memory cycles. The T80 takes the data of a read at the CPU clock that ends T2 (the opcode of
  M1 too), one T-state after its RD_n would go low (T80se). The request to the SDRAM is made at the
@@ -52,6 +65,16 @@ module pentagon (
 	input wire tape_in,
 	output reg beeper = 1'b0,
 	output reg mic = 1'b0,
+	input wire nmi,               // NMI while high
+	input wire areset,            // power on (the start of the core): clears the DivMMC, a reset does not
+
+	// DivMMC
+	input wire divmmc_en,
+	output reg spi_sck = 1'b0,
+	output reg spi_mosi = 1'b1,
+	output reg spi_cs_n = 1'b1,
+	input wire spi_miso,
+	input wire sd_wait,           // the emulated card waits for the MCU
 
 	// SDRAM channel A (CPU)
 	output reg a_req = 1'b0,
@@ -104,7 +127,7 @@ T80 #(.Mode(0), .IOWait(1)) cpu (
 	.CEN(cpu_cen),
 	.WAIT_n(cpu_wait_n),
 	.INT_n(int_n),
-	.NMI_n(1'b1),
+	.NMI_n(~nmi),
 	.BUSRQ_n(1'b1),
 	.M1_n(),
 	.IORQ(cpu_iorq),
@@ -147,17 +170,40 @@ reg [5:0] p7ffd = 6'd0;   // 2..0 RAM page at C000, 3 screen, 4 ROM, 5 lock
 reg [2:0] border = 3'd0;
 wire lock = p7ffd[5];
 
+// DivMMC registers
+reg dv_conmem = 1'b0, dv_mapram = 1'b0;
+reg [5:0] dv_bank = 6'd0;
+reg dv_automap = 1'b0, dv_detect = 1'b0;
+
+// the opcode fetch of this M-cycle maps the DivMMC at once (3D00-3DFF, with any ROM, as divmmc.vhd of
+// divgmx): the read of the opcode itself comes from the DivMMC
+wire dv_instant = m1_cycle & cpu_intcycle_n & (cpu_a[15:8] == 8'h3D);
+wire dv_mapped = divmmc_en & (dv_conmem | dv_automap | dv_instant);
+
 // memory map
 reg [22:0] map_addr;
+reg map_ro;
 always @* begin
-	case (cpu_a[15:14])
-		2'd0: map_addr = {5'd0, 2'b10, 1'b0, p7ffd[4], cpu_a[13:0]};   // ROM 0 / 1
+	map_ro = 1'b0;
+	if (dv_mapped && cpu_a[15:13] == 3'b000) begin
+		map_ro = 1'b1;
+		map_addr = dv_mapram ? {4'b0001, 6'd3, cpu_a[12:0]} : {5'd0, 2'b10, 2'b11, cpu_a[13:0]};
+	end else if (dv_mapped && cpu_a[15:13] == 3'b001) begin
+		map_ro = dv_mapram && dv_bank == 6'd3;
+		map_addr = {4'b0001, dv_bank, cpu_a[12:0]};
+	end else case (cpu_a[15:14])
+		2'd0: begin map_ro = 1'b1; map_addr = {5'd0, 2'b10, 1'b0, p7ffd[4], cpu_a[13:0]}; end   // ROM 0 / 1
 		2'd1: map_addr = {6'd0, 3'd5, cpu_a[13:0]};
 		2'd2: map_addr = {6'd0, 3'd2, cpu_a[13:0]};
 		default: map_addr = {6'd0, p7ffd[2:0], cpu_a[13:0]};
 	endcase
 end
-wire is_rom = (cpu_a[15:14] == 2'd0);
+wire is_rom = map_ro;
+
+// DivMMC ports
+wire dv_port_e3 = divmmc_en && cpu_a[7:0] == 8'hE3;
+wire dv_port_e7 = divmmc_en && cpu_a[7:0] == 8'hE7;
+wire dv_port_eb = divmmc_en && cpu_a[7:0] == 8'hEB;
 
 // keyboard columns of the selected rows
 reg [4:0] kb_col;
@@ -169,9 +215,13 @@ always @* begin
 			kb_col = kb_col & ~keys[r*5 +: 5];
 end
 
+reg [7:0] spi_in = 8'hFF;   // the byte of the last exchange
+reg [7:0] eb_q = 8'hFF;     // what this IN of #EB gives: spi_in when it started its exchange
 reg [7:0] port_q;
 always @* begin
-	if (!cpu_a[0])
+	if (dv_port_eb)
+		port_q = io_done ? eb_q : spi_in;
+	else if (!cpu_a[0])
 		port_q = {1'b1, tape_in, 1'b1, kb_col};
 	else if (cpu_a[7:0] == 8'h1F)
 		port_q = kempston;
@@ -247,15 +297,123 @@ always @(posedge clk) begin
 			a_din <= pend_din;
 		end
 
-		if (cpu_cen && cpu_ts == 3'd2 && !cpu_wait_n)
+		if (cpu_cen && cpu_ts == 3'd2 && rd_cycle && (pend || a_busy))
 			late <= 1'b1;
 		if (cpu_cen && cpu_ts == 3'd2 && cpu_wait_n && rd_cycle && a_q != 8'd0)
 			nz <= 1'b1;
 	end
 end
 
+// ---------------------------------------------------------------------------------------------
+// DivMMC: automap, ports, SPI master
+
+reg [4:0] spi_cnt = 5'd0;     // 4 clocks per bit, 8 bits
+reg spi_busy = 1'b0;
+reg [7:0] spi_sr = 8'hFF;
+reg io_done = 1'b0;           // the #EB access of this M-cycle is made
+wire eb_cycle = dv_port_eb & ~m1_cycle & cpu_iorq;
+// the CPU waits only before the exchange of this access starts (the one before is still running, or the emulated
+// card waits for the MCU); not for its own exchange: an IN gives the byte of the exchange before it (DivMMC).
+// Waiting for its own exchange (the automatic TW of the I/O cycle) made the IN return the byte of the exchange it
+// started: every answer of the card one byte late, no card found (found on the board with ESXDOS 0.8.9).
+wire eb_wait = eb_cycle & ~io_done & (spi_busy | (sd_wait & ~cpu_write));
+
+// The state of the DivMMC is kept over a reset of the machine (divmmc.vhd of divgmx, MVV): #E3, the card
+// select, automap and detect are cleared at power on (areset) and while the DivMMC is off; #E3 and the card
+// select also at a reset with NMI held (ESXDOS starts without its state). Clearing them at every reset made
+// ESXDOS 0.8.9 reboot in a loop after a reset (found on the board).
+wire m1_read = m1_cycle & cpu_intcycle_n & (cpu_ts == 3'd1 || cpu_ts == 3'd2);
+wire dv_entry = cpu_a == 16'h0000 || cpu_a == 16'h0008 || cpu_a == 16'h0038 || cpu_a == 16'h0066 ||
+	cpu_a == 16'h04C6 || cpu_a == 16'h0562;
+wire dv_exit = cpu_a[15:3] == 13'b0001111111111;   // 1FF8-1FFF
+
+always @(posedge clk) begin
+	if (areset || !divmmc_en) begin
+		dv_conmem <= 1'b0;
+		dv_mapram <= 1'b0;
+		dv_bank <= 6'd0;
+		dv_automap <= 1'b0;
+		dv_detect <= 1'b0;
+		spi_cs_n <= 1'b1;
+	end else if (reset) begin
+		if (nmi) begin
+			dv_conmem <= 1'b0;
+			dv_mapram <= 1'b0;
+			dv_bank <= 6'd0;
+			spi_cs_n <= 1'b1;
+		end
+	end else begin
+		// automap: an opcode fetch of an entry point sets detect, of 1FF8-1FFF clears it, of 3Dxx maps at once;
+		// out of the fetch automap follows detect (the fetch itself still from before)
+		if (m1_read && dv_entry)
+			dv_detect <= 1'b1;
+		else if (m1_read && dv_exit)
+			dv_detect <= 1'b0;
+		else if (m1_read && cpu_a[15:8] == 8'h3D) begin
+			dv_automap <= 1'b1;
+			dv_detect <= 1'b1;
+		end else
+			dv_automap <= dv_detect;
+
+		// port writes (as the other ports, DO valid in T2)
+		if (cen_d && cpu_ts == 3'd2 && !wr_done && io_wr) begin
+			if (dv_port_e3) begin
+				dv_conmem <= cpu_do[7];
+				dv_mapram <= dv_mapram | cpu_do[6];
+				dv_bank <= cpu_do[5:0];
+			end
+			if (dv_port_e7)
+				spi_cs_n <= cpu_do[0];
+		end
+	end
+end
+
+// the SPI exchanges: cleared with the machine
+always @(posedge clk) begin
+	if (reset || !divmmc_en) begin
+		spi_busy <= 1'b0;
+		spi_sck <= 1'b0;
+		spi_mosi <= 1'b1;
+		io_done <= 1'b0;
+	end else begin
+		// #EB: one exchange per access, at the end of T2 when the CPU does not wait
+		if (cpu_ts == 3'd1)
+			io_done <= 1'b0;
+		if (cpu_cen && cpu_ts == 3'd2 && cpu_wait_n && eb_cycle && !io_done && !spi_busy) begin
+			io_done <= 1'b1;
+			eb_q <= spi_in;
+			spi_busy <= 1'b1;
+			spi_cnt <= 5'd0;
+			spi_sr <= cpu_write ? cpu_do : 8'hFF;
+		end
+
+		// the exchange: bit k: sck low and MOSI at 4k, sck high at 4k + 2, MISO taken at 4k + 3
+		if (spi_busy) begin
+			spi_cnt <= spi_cnt + 1'd1;
+			case (spi_cnt[1:0])
+				2'd0: begin spi_sck <= 1'b0; spi_mosi <= spi_sr[7]; end
+				2'd2: spi_sck <= 1'b1;
+				2'd3: begin
+					spi_sr <= {spi_sr[6:0], spi_miso};
+					if (spi_cnt == 5'd31)
+						spi_busy <= 1'b0;
+				end
+				default: ;   // 1: nothing (a default here shifted twice a bit: every second bit went out)
+			endcase
+		end else
+			spi_sck <= 1'b0;
+	end
+end
+
+// the byte of the exchange before: what a read of #EB gives (taken when the exchange ends)
+always @(posedge clk)
+	if (reset)
+		spi_in <= 8'hFF;
+	else if (spi_busy && spi_cnt == 5'd31)
+		spi_in <= {spi_sr[6:0], spi_miso};
+
 // data of a read: wait while it is not there
-assign cpu_wait_n = ~(rd_cycle & (pend | a_busy));
+assign cpu_wait_n = ~(rd_cycle & (pend | a_busy)) & ~eb_wait;
 assign cpu_di = io_rd ? port_q : (cpu_intcycle_n ? a_q : 8'hFF);
 
 // T80se: DI is taken into the register at the end of T2 (the instruction register takes DInst)

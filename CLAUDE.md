@@ -19,7 +19,8 @@ in the same change as the code they describe.
 ## Build
 
 - `cd src && make go` (synthesis, implementation, bitstream, `quadspeccy.kg`); steps `go-xst`, `go-impl`, `go-core`;
-  `go-report` utilization and timing of the last build. Only the Go board for now (`BOARDS`); Mini / Mini G later.
+  `go-report` utilization and timing of the last build. Every ISE step also writes to `src/karabas_<board>_build.log` (tee; the
+  synthesis starts it, each step adds a `===` header with the time): the user follows it with `tail -f`. Only the Go board for now (`BOARDS`); Mini / Mini G later.
 - Windows: MSYS2 make from Git Bash, ISE in `/c/Xilinx/14.7/ISE_DS` (nt64 binaries, 32-bit bitgen). That make passes
   no TEMP / TMP / XILINXD_LICENSE_FILE / USERPROFILE / APPDATA / LOCALAPPDATA to its recipes, the Makefile sets
   them (`ISE_ENV`, exports; without LOCALAPPDATA the Python install manager behind `python` installs a Python
@@ -39,6 +40,11 @@ in the same change as the code they describe.
   needed wait states (`late`) and that the CPU runs; prints `tb_pentagon: 0 errors`; writes the screen pages 5 / 7 as
   `src/sim/work/screen.png` (`tools/render_screen.py`). About 40 s per frame; the 128 ROM sits in a delay loop for the
   first ~10 frames (PC 0004..0008, 11027 opcode fetches per frame = 71680 / 26 * 4).
+- Options of `run_sim.sh` (environment): `RESET_AT=<frame>` a warm reset of the machine; `SDEMU=1` `kg_sd_emu` on
+  the SPI of the DivMMC with a model of `img_sdc` (a 64 MB image, sector bytes = lba ^ index); `SDTEST=1` puts
+  `src/sim/sdtest.asm` (sjasmplus) in the place of the ESXDOS ROM: it sends CMD0/8/55/41/58/17 through the DivMMC
+  ports and keeps the answers in RAM, the testbench prints them (2 frames are enough). ESXDOS itself reaches the card
+  only after ~23 frames (it clears 5 RAM banks first).
 - ISim 14.7 has no `$writememh` / `$clog2`; inputs of VHDL from Verilog all connected.
 
 ## Design (see docs/ARCHITECTURE.md)

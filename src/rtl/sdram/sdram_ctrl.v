@@ -14,7 +14,8 @@
         4i+2  READ     with auto precharge (tRCD 2 clocks = 23.8 ns), or
         4i+3  WRITE    with auto precharge, the data driven for this clock only
         4i+5  the read data is taken on the falling clock in the middle of this period (2.5 clocks
-              after READ, CAS latency 2), into q at its end (ack with it)
+              after READ, CAS latency 2), copied at its end (no logic: half a clock)
+        4i+6  its byte into q (ack with it)
 
  So a bank is opened every 16 clocks (tRC <= 6 clocks), ACTIVE commands of two banks are 4 clocks
  apart (tRRD), the data bus carries one word per window, and a write drives DQ at least a clock
@@ -119,8 +120,9 @@ reg op_byte = 1'b0;
 reg [7:0] op_din = 8'd0;
 
 // a read in flight: READ leaves its register at the rising clock E0 (rd_sr[0] high after it), DQ
-// is taken on the falling clock E2.5 (rd_sr[2] high in E2..E3), into q at E3
-reg [2:0] rd_sr = 3'b000;
+// is taken on the falling clock E2.5 (rd_sr[2] high in E2..E3), copied at E3 (dq_r), its byte into q at E4
+reg [3:0] rd_sr = 4'b0000;
+reg [15:0] dq_r = 16'd0;
 reg [1:0] rd_bank = 2'd0;
 reg rd_ch = 1'b0;
 reg rd_byte = 1'b0;
@@ -141,12 +143,14 @@ wire [22:0] a_sel = a_addr[cbank*23 +: 23];
 wire [22:0] b_sel = b_addr[cbank*23 +: 23];
 wire [7:0] a_dsel = a_din[cbank*8 +: 8];
 
-wire [7:0] rd_val = rd_byte ? dq_in[15:8] : dq_in[7:0];
+wire [7:0] rd_val = rd_byte ? dq_r[15:8] : dq_r[7:0];
 
 always @(posedge clk) begin
 	cmd <= CMD_NOP;
 	dq_oe <= 1'b0;
-	rd_sr <= {rd_sr[1:0], 1'b0};
+	rd_sr <= {rd_sr[2:0], 1'b0};
+	if (rd_sr[2])
+		dq_r <= dq_in;
 
 	if (!ready) begin
 		// ---- init ----
@@ -216,8 +220,9 @@ always @(posedge clk) begin
 			endcase
 		end
 
-		// the read data, at cnt 4i+5 (phase 1 of the next bank: no write ack in the same clock)
-		if (rd_sr[2]) begin
+		// the read data, at cnt 4i+6 (phase 2 of the next bank: no write ack in the same clock; its READ
+		// sets rd_bank / rd_ch / rd_byte in this clock, these are still the old ones)
+		if (rd_sr[3]) begin
 			if (!rd_ch) begin
 				case (rd_bank)
 					2'd0: aq0 <= rd_val;

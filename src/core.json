@@ -7,23 +7,350 @@
     "eeprom_bank": 255,
     "rtc_mode": 0,
     "roms": [
-    {"filename": "roms/128.rom", "address": 0},
-    {"filename": "roms/48.rom", "address": 16384},
-    {"filename": "roms/128.rom", "address": 65536},
-    {"filename": "roms/48.rom", "address": 81920},
-    {"filename": "roms/128.rom", "address": 131072},
-    {"filename": "roms/48.rom", "address": 147456},
-    {"filename": "roms/128.rom", "address": 196608},
-    {"filename": "roms/48.rom", "address": 212992}
+        {
+            "filename": "roms/128.rom",
+            "address": 0
+        },
+        {
+            "filename": "roms/48.rom",
+            "address": 16384
+        },
+        {
+            "filename": "roms/esxdos089.bin",
+            "address": 49152
+        },
+        {
+            "filename": "roms/128.rom",
+            "address": 65536
+        },
+        {
+            "filename": "roms/48.rom",
+            "address": 81920
+        },
+        {
+            "filename": "roms/esxdos089.bin",
+            "address": 114688
+        },
+        {
+            "filename": "roms/128.rom",
+            "address": 131072
+        },
+        {
+            "filename": "roms/48.rom",
+            "address": 147456
+        },
+        {
+            "filename": "roms/esxdos089.bin",
+            "address": 180224
+        },
+        {
+            "filename": "roms/128.rom",
+            "address": 196608
+        },
+        {
+            "filename": "roms/48.rom",
+            "address": 212992
+        },
+        {
+            "filename": "roms/esxdos089.bin",
+            "address": 245760
+        }
     ],
     "boards": {
-        "go": {"build": "26111201", "bitstream": "karabas_go.bin"}
+        "go": {
+            "build": "26111203",
+            "bitstream": "karabas_go.bin"
+        }
     },
     "osd": [
-    {"type": "S", "name": "Joystick L", "options": ["Kempston", "Sinclair1", "Sinclair2", "Cursor", "QAOPM", "QAOPS"], "default": 0, "hotkey": "Menu+J"},
-    {"type": "S", "name": "Joystick R", "options": ["Kempston", "Sinclair1", "Sinclair2", "Cursor", "QAOPM", "QAOPS"], "default": 1, "hotkey": "Menu+R"},
-    {"type": "N", "name": "Pause", "options": ["Off", "On"], "default": 0, "hotkey": "Menu+P"},
-    {"type": "T", "name": "Reset", "options": null, "default": 0, "hotkey": "F12"},
-    {"type": "T", "name": "Reset All", "options": null, "default": 0, "hotkey": "Menu+F12"}
+        {
+            "type": "M",
+            "name": "Core 1",
+            "open": 1
+        },
+        {
+            "type": "M",
+            "name": "Core 2",
+            "open": 2
+        },
+        {
+            "type": "M",
+            "name": "Core 3",
+            "open": 3
+        },
+        {
+            "type": "M",
+            "name": "Core 4",
+            "open": 4
+        },
+        {
+            "type": "-"
+        },
+        {
+            "index": 0,
+            "type": "S",
+            "name": "Joystick L",
+            "options": [
+                "Kempston",
+                "Sinclair1",
+                "Sinclair2",
+                "Cursor",
+                "QAOPM",
+                "QAOPS"
+            ],
+            "default": 0,
+            "hotkey": "Menu+J"
+        },
+        {
+            "index": 1,
+            "type": "S",
+            "name": "Joystick R",
+            "options": [
+                "Kempston",
+                "Sinclair1",
+                "Sinclair2",
+                "Cursor",
+                "QAOPM",
+                "QAOPS"
+            ],
+            "default": 1,
+            "hotkey": "Menu+R"
+        },
+        {
+            "index": 5,
+            "type": "S",
+            "name": "Frame colour",
+            "options": [
+                "Black",
+                "Blue",
+                "Red",
+                "Magenta",
+                "Green",
+                "Cyan",
+                "Yellow",
+                "White"
+            ],
+            "default": 4
+        },
+        {
+            "index": 2,
+            "type": "N",
+            "name": "Pause",
+            "options": [
+                "Off",
+                "On"
+            ],
+            "default": 0,
+            "hotkey": "Menu+P"
+        },
+        {
+            "type": "-"
+        },
+        {
+            "index": 6,
+            "type": "T",
+            "name": "NMI",
+            "hotkey": "Menu+F11"
+        },
+        {
+            "index": 3,
+            "type": "T",
+            "name": "Reset",
+            "hotkey": "Menu+F12"
+        },
+        {
+            "index": 4,
+            "type": "T",
+            "name": "Reset All",
+            "hotkey": "F12"
+        },
+        {
+            "index": 7,
+            "key": "divmmc1",
+            "type": "S",
+            "name": "DivMMC",
+            "options": [
+                "Off",
+                "On"
+            ],
+            "default": 1,
+            "page": 1
+        },
+        {
+            "index": 8,
+            "key": "sd1",
+            "type": "S",
+            "name": "SD card",
+            "options": [
+                "Real",
+                "Image"
+            ],
+            "default": 1,
+            "page": 1,
+            "enable_if": {
+                "item": "divmmc1",
+                "value": "On"
+            }
+        },
+        {
+            "type": "F",
+            "key": "sdimg1",
+            "name": "SD image",
+            "slot": 0,
+            "exts": [
+                "img",
+                "mmc",
+                "hdf",
+                "vhd",
+                "bin"
+            ],
+            "dir": "/zx",
+            "page": 1,
+            "show_if": {
+                "item": "sd1",
+                "value": "Image"
+            }
+        },
+        {
+            "index": 9,
+            "key": "divmmc2",
+            "type": "S",
+            "name": "DivMMC",
+            "options": [
+                "Off",
+                "On"
+            ],
+            "default": 1,
+            "page": 2
+        },
+        {
+            "index": 10,
+            "key": "sd2",
+            "type": "S",
+            "name": "SD card",
+            "options": [
+                "Real",
+                "Image"
+            ],
+            "default": 1,
+            "page": 2,
+            "enable_if": {
+                "item": "divmmc2",
+                "value": "On"
+            }
+        },
+        {
+            "type": "F",
+            "key": "sdimg2",
+            "name": "SD image",
+            "slot": 1,
+            "exts": [
+                "img",
+                "mmc",
+                "hdf",
+                "vhd",
+                "bin"
+            ],
+            "dir": "/zx",
+            "page": 2,
+            "show_if": {
+                "item": "sd2",
+                "value": "Image"
+            }
+        },
+        {
+            "index": 11,
+            "key": "divmmc3",
+            "type": "S",
+            "name": "DivMMC",
+            "options": [
+                "Off",
+                "On"
+            ],
+            "default": 1,
+            "page": 3
+        },
+        {
+            "index": 12,
+            "key": "sd3",
+            "type": "S",
+            "name": "SD card",
+            "options": [
+                "Real",
+                "Image"
+            ],
+            "default": 1,
+            "page": 3,
+            "enable_if": {
+                "item": "divmmc3",
+                "value": "On"
+            }
+        },
+        {
+            "type": "F",
+            "key": "sdimg3",
+            "name": "SD image",
+            "slot": 2,
+            "exts": [
+                "img",
+                "mmc",
+                "hdf",
+                "vhd",
+                "bin"
+            ],
+            "dir": "/zx",
+            "page": 3,
+            "show_if": {
+                "item": "sd3",
+                "value": "Image"
+            }
+        },
+        {
+            "index": 13,
+            "key": "divmmc4",
+            "type": "S",
+            "name": "DivMMC",
+            "options": [
+                "Off",
+                "On"
+            ],
+            "default": 1,
+            "page": 4
+        },
+        {
+            "index": 14,
+            "key": "sd4",
+            "type": "S",
+            "name": "SD card",
+            "options": [
+                "Real",
+                "Image"
+            ],
+            "default": 1,
+            "page": 4,
+            "enable_if": {
+                "item": "divmmc4",
+                "value": "On"
+            }
+        },
+        {
+            "type": "F",
+            "key": "sdimg4",
+            "name": "SD image",
+            "slot": 3,
+            "exts": [
+                "img",
+                "mmc",
+                "hdf",
+                "vhd",
+                "bin"
+            ],
+            "dir": "/zx",
+            "page": 4,
+            "show_if": {
+                "item": "sd4",
+                "value": "Image"
+            }
+        }
     ]
 }

@@ -4,7 +4,9 @@
 #   make go              one board: synthesis, implementation, bitstream, .kg file
 #   make go-xst          one step: <board>-xst (.ngc), <board>-impl (.bin), <board>-core (.kg)
 #   make go-report       LUTs, slices, block RAMs and the timing result of the last build
-#   make clean           the intermediate files (not the .bin / .kg files, they are in git)
+#   tail -f karabas_go_build.log   the progress of a build: every ISE step writes there too (the synthesis
+#                        starts it again, each step adds a header with the time)
+#   make clean          the intermediate files (not the .bin / .kg files, they are in git)
 #
 # Inputs per board: karabas_<board>.prj (the source list, the shared modules as "../modules/rtl/..."),
 # .xst, .ucf, .ut. A step runs again when one of its inputs is newer than its output.
@@ -67,18 +69,26 @@ SRC_$(1) := $$(shell sed -n 's/^[a-z]* work "\(.*\)"/\1/p' karabas_$(1).prj)
 
 karabas_$(1).ngc: karabas_$(1).prj karabas_$(1).xst $$(SRC_$(1)) $(INCLUDES)
 	mkdir -p xst/projnav.tmp
-	$(XIL) xst -intstyle ise -ifn karabas_$(1).xst -ofn karabas_$(1).syr
+	echo "=== $$$$(date '+%F %T') karabas_$(1): synthesis" > karabas_$(1)_build.log
+	$(XIL) xst -intstyle ise -ifn karabas_$(1).xst -ofn karabas_$(1).syr 2>&1 | tee -a karabas_$(1)_build.log
 
 karabas_$(1).bin: karabas_$(1).ngc karabas_$(1).ucf karabas_$(1).ut
-	$(XIL) ngdbuild -intstyle ise -dd _ngo -nt timestamp -uc karabas_$(1).ucf -p $(PART) karabas_$(1).ngc karabas_$(1).ngd
-	$(XIL) map -intstyle ise -p $(PART) -w $(MAP_OPT) -t $(MAP_T_$(1)) -o karabas_$(1)_map.ncd karabas_$(1).ngd karabas_$(1).pcf
-	$(XIL) par -w -intstyle ise $(PAR_OPT) karabas_$(1)_map.ncd karabas_$(1).ncd karabas_$(1).pcf
-	$(XIL) trce -intstyle ise -v 3 -s 2 -n 3 -fastpaths -xml karabas_$(1).twx karabas_$(1).ncd -o karabas_$(1).twr karabas_$(1).pcf -ucf karabas_$(1).ucf
+	echo "=== $$$$(date '+%T') ngdbuild" | tee -a karabas_$(1)_build.log
+	$(XIL) ngdbuild -intstyle ise -dd _ngo -nt timestamp -uc karabas_$(1).ucf -p $(PART) karabas_$(1).ngc karabas_$(1).ngd 2>&1 | tee -a karabas_$(1)_build.log
+	echo "=== $$$$(date '+%T') map" | tee -a karabas_$(1)_build.log
+	$(XIL) map -intstyle ise -p $(PART) -w $(MAP_OPT) -t $(MAP_T_$(1)) -o karabas_$(1)_map.ncd karabas_$(1).ngd karabas_$(1).pcf 2>&1 | tee -a karabas_$(1)_build.log
+	echo "=== $$$$(date '+%T') par" | tee -a karabas_$(1)_build.log
+	$(XIL) par -w -intstyle ise $(PAR_OPT) karabas_$(1)_map.ncd karabas_$(1).ncd karabas_$(1).pcf 2>&1 | tee -a karabas_$(1)_build.log
+	echo "=== $$$$(date '+%T') trce" | tee -a karabas_$(1)_build.log
+	$(XIL) trce -intstyle ise -v 3 -s 2 -n 3 -fastpaths -xml karabas_$(1).twx karabas_$(1).ncd -o karabas_$(1).twr karabas_$(1).pcf -ucf karabas_$(1).ucf 2>&1 | tee -a karabas_$(1)_build.log
+	echo "=== $$$$(date '+%T') bitgen" | tee -a karabas_$(1)_build.log
 	rm -f karabas_$(1).bin karabas_$(1).bit
-	$(XIL_BITGEN) bitgen -intstyle ise -f karabas_$(1).ut karabas_$(1).ncd || 		{ test -s karabas_$(1).bin && echo "bitgen failed after it wrote karabas_$(1).bin (ISE 14.7 on Windows 10), taken"; }
+	{ $(XIL_BITGEN) bitgen -intstyle ise -f karabas_$(1).ut karabas_$(1).ncd || \
+		{ test -s karabas_$(1).bin && echo "bitgen failed after it wrote karabas_$(1).bin (ISE 14.7 on Windows 10), taken"; }; } 2>&1 | tee -a karabas_$(1)_build.log
+	echo "=== $$$$(date '+%T') done: karabas_$(1).bin" | tee -a karabas_$(1)_build.log
 
 kg_$(1).stamp: karabas_$(1).bin $(JSON) $$(wildcard roms/*)
-	$(PYTHON) $(MAKE_CORE) $(JSON) $(KG) --boards $(1)
+	$(PYTHON) $(MAKE_CORE) $(JSON) $(KG) --boards $(1) 2>&1 | tee -a karabas_$(1)_build.log
 	touch $$@
 
 $(1): kg_$(1).stamp

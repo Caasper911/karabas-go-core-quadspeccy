@@ -5,7 +5,7 @@
  karabas_go_top.v
 
  Quad Speccy for Karabas Go: up to four Pentagon 128 running side by side, each in its own SDRAM
- bank (docs/ARCHITECTURE.md). NUM_MACHINES = 1 for now; the quad view (video_out) after power on,
+ bank (docs/ARCHITECTURE.md). NUM_MACHINES = 4; the quad view (video_out) after power on,
  Win + ` switches to the selected machine full screen and back.
 
  Clocks (one PLL on CLK_50MHZ, VCO 925 MHz, phase 0, as TS-Conf):
@@ -14,8 +14,15 @@
                             is an edge of clk_sys
 
  Hotkeys (zx_kbd): Win + 1..4 the machine that has the keyboard, Win + ` full screen / quad.
- OSD (core.json "osd", soft switch registers in this order): 0 joystick L, 1 joystick R, 2 pause,
- 3 reset of the selected machine, 4 reset of all.
+ OSD (core.json "osd", the "index" of the items): 0 joystick L, 1 joystick R, 2 pause, 3 reset of the
+ selected machine (Win+F12), 4 reset of all (F12), 5 colour of the frame of the selected machine in the
+ quad view (ZX colour, default 4 green), 6 NMI of the selected machine (Win+F11), per machine n on its
+ page "Core n+1": 7 + 2n DivMMC on (default on), 8 + 2n SD card: the card of the board / the image
+ (default image), and the F item of the image, slot n of the file mounter.
+
+ DivMMC (docs/ARCHITECTURE.md): the SPI of machine n goes to the card of the board (SD_*) when it chose
+ it and is the lowest such machine (one owner: the others see no card), else to kg_sd_emu n on the image
+ of slot n (img_sdc, one request at a time for all four).
 
  ROM loader: the MCU address bits 17..16 are the machine, 15..0 the offset in its ROM area
  (16 KB per ROM: 0 the 128 editor, 1 48 BASIC); the bytes go through a FIFO to channel A of the
@@ -130,10 +137,7 @@ assign MD = 16'bZZZZZZZZZZZZZZZZ;
 assign MWR_N = 2'b11;
 assign MRD_N = 2'b11;
 
-assign SD_CS_N = 1'b1;
-assign SD_CLK = 1'b0;
-assign SD_DI = 1'b1;
-assign SD_DO = 1'bZ;
+assign SD_DO = 1'bZ;     // MISO of the card (SD_DI is MOSI, SD_CLK, SD_CS_N: the DivMMC section)
 
 assign WA = 3'd0;
 assign WCS_N = 2'b11;
@@ -201,6 +205,14 @@ wire loader_wr;
 wire mcu_busy;
 wire mcu_ft_spi_on, mcu_ft_vga_on, mcu_ft_sck, mcu_ft_mosi, mcu_ft_cs_n;
 wire mcu_burst_ready;
+// the file mounter (the images of the emulated SD cards, slot n = machine n)
+wire [7:0] img_mounted;
+wire [63:0] img_size;
+wire img_data_wr, img_result_wr, img_q_wr, img_q_ack;
+wire [8:0] img_data_addr;
+wire [7:0] img_data, img_result;
+wire [15:0] img_sum;
+wire [23:0] img_q_di;
 
 assign MCU_SPI_IO[0] = mcu_burst_ready;
 assign MCU_SPI_IO[1] = 1'bZ;
@@ -212,7 +224,7 @@ kg_mcu #(
 	.ENABLE_UART(0),
 	.ENABLE_MATRIX(0),
 	.ENABLE_DEBUG(0),
-	.ENABLE_IMG(0),
+	.ENABLE_IMG(1),
 	.ENABLE_FILE(0),
 	.ENABLE_FT(1),
 	.ENABLE_SD2(0)
@@ -279,8 +291,9 @@ kg_mcu #(
 
 	.HWID(), .DVI_ONLY(), .CORE_BUILD(), .FW_BUILD(),
 
-	.IMG_MOUNTED(), .IMG_SIZE(), .IMG_DATA_WR(), .IMG_DATA_ADDR(), .IMG_DATA(), .IMG_RESULT_WR(),
-	.IMG_RESULT(), .IMG_SUM(), .IMG_Q_WR(1'b0), .IMG_Q_DI(24'd0), .IMG_Q_ACK(), .IMG_PHYS_WR(),
+	.IMG_MOUNTED(img_mounted), .IMG_SIZE(img_size), .IMG_DATA_WR(img_data_wr), .IMG_DATA_ADDR(img_data_addr),
+	.IMG_DATA(img_data), .IMG_RESULT_WR(img_result_wr), .IMG_RESULT(img_result), .IMG_SUM(img_sum),
+	.IMG_Q_WR(img_q_wr), .IMG_Q_DI(img_q_di), .IMG_Q_ACK(img_q_ack), .IMG_PHYS_WR(),
 	.IMG_PHYS(), .IMG_FLUSH(), .IMG_WP(),
 	.FDD_CHNG_REQ(1'b0), .FDD_CHNG_DS(2'd0), .FDD_CHNG_WR(), .FDD_CHNG(),
 
@@ -300,8 +313,9 @@ assign FT_OE_N = mcu_ft_vga_on ? 1'b0 : 1'b1;
 // ---------------------------------------------------------------------------------------------
 // soft switches
 
-wire [5*8-1:0] softsw;
-kg_soft_switches #(.N(5)) soft_switches(
+// 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image)
+wire [15*8-1:0] softsw;
+kg_soft_switches #(.N(15), .INIT(120'h01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
 	.clk(clk_bus),
 	.command(softsw_command),
 	.regs(softsw),
@@ -313,6 +327,10 @@ wire [2:0] joy_type_r = softsw[10:8];
 wire sw_pause = softsw[16];
 wire sw_reset = softsw[24];
 wire sw_reset_all = softsw[32];
+wire [2:0] sw_frame_col = softsw[42:40];
+wire sw_nmi = softsw[48];
+wire [3:0] sw_divmmc = {softsw[13*8], softsw[11*8], softsw[9*8], softsw[7*8]};
+wire [3:0] sw_sd_img = {softsw[14*8], softsw[12*8], softsw[10*8], softsw[8*8]};
 
 // ---------------------------------------------------------------------------------------------
 // keyboard
@@ -483,6 +501,58 @@ wire [4*16-1:0] q_words;
 wire [4*3-1:0] q_brds;
 
 wire [3:0] m_beeper, m_mic, m_late, m_nz;
+
+// ---------------------------------------------------------------------------------------------
+// DivMMC: the SD cards
+
+wire [3:0] spi_sck, spi_mosi, spi_cs_n, spi_miso, sd_wait, emu_miso, emu_wait, hd_rd, hd_wr;
+wire [4*32-1:0] hd_lba;
+wire [4*8-1:0] hd_byte_out;
+
+// the card of the board: the lowest machine with the DivMMC on and the SD card "Real"
+wire [3:0] want_real = sw_divmmc & ~sw_sd_img;
+wire [1:0] real_owner = want_real[0] ? 2'd0 : want_real[1] ? 2'd1 : want_real[2] ? 2'd2 : 2'd3;
+wire real_on = |want_real;
+
+reg sd_miso_r = 1'b1;
+always @(posedge clk_bus)
+	sd_miso_r <= SD_DO;
+
+assign SD_CLK = real_on ? spi_sck[real_owner] : 1'b0;
+assign SD_DI = real_on ? spi_mosi[real_owner] : 1'b1;
+assign SD_CS_N = real_on ? spi_cs_n[real_owner] : 1'b1;
+
+generate
+	for (gi = 0; gi < 4; gi = gi + 1) begin : g_sd
+		// the image: the emulated card; the card of the board: its owner gets it, the others no card (FF)
+		assign spi_miso[gi] = sw_sd_img[gi] ? emu_miso[gi] : (real_on && real_owner == gi) ? sd_miso_r : 1'b1;
+		assign sd_wait[gi] = sw_sd_img[gi] & emu_wait[gi];
+	end
+endgenerate
+
+// the file mounter: one request at a time, the lowest slot first (img_sdc takes the sector with it)
+wire sdc_busy, sdc_done, sdc_error, sdc_byte_in_strobe;
+wire [2:0] sdc_slot;
+wire [8:0] sdc_byte_addr;
+wire [7:0] sdc_byte_in_data, sdc_img_mounted;
+wire [63:0] sdc_img_size;
+wire [3:0] hd_req = hd_rd | hd_wr;
+wire [1:0] hd_first = hd_req[0] ? 2'd0 : hd_req[1] ? 2'd1 : hd_req[2] ? 2'd2 : 2'd3;
+
+img_sdc #(.OUT_LATENCY(3), .TIMEOUT(24'd5600000)) sdc(
+	.clk(clk_bus),
+	.reset(1'b0),
+	.img_mounted(img_mounted), .img_size(img_size), .img_data_wr(img_data_wr), .img_data_addr(img_data_addr),
+	.img_data(img_data), .img_result_wr(img_result_wr), .img_result(img_result), .img_sum(img_sum),
+	.img_q_wr(img_q_wr), .img_q_di(img_q_di), .img_q_ack(img_q_ack),
+	.sdc_img_mounted(sdc_img_mounted), .sdc_img_size(sdc_img_size),
+	.sdc_rd({4'd0, hd_rd}), .sdc_wr({4'd0, hd_wr}),
+	.sdc_sector(hd_lba[hd_first*32 +: 32]),
+	.sdc_busy(sdc_busy), .sdc_done(sdc_done), .sdc_error(sdc_error), .sdc_slot(sdc_slot),
+	.sdc_byte_in_strobe(sdc_byte_in_strobe), .sdc_byte_addr(sdc_byte_addr), .sdc_byte_in_data(sdc_byte_in_data),
+	.sdc_byte_out_data(hd_byte_out[sdc_slot[1:0]*8 +: 8]),
+	.active()
+);
 wire [4*4-1:0] m_pix;
 
 generate
@@ -505,6 +575,15 @@ generate
 				.keys(sel == gi ? kbd_keys : 40'd0),
 				.kempston(sel == gi ? kbd_kempston : 8'd0),
 				.tape_in(TAPE_IN),
+				.nmi(sw_nmi && sel == gi),
+				// power on for the DivMMC (a reset keeps its state): the start of the core and the ROM loading
+				.areset(areset | ld_hold),
+				.divmmc_en(sw_divmmc[gi]),
+				.spi_sck(spi_sck[gi]),
+				.spi_mosi(spi_mosi[gi]),
+				.spi_cs_n(spi_cs_n[gi]),
+				.spi_miso(spi_miso[gi]),
+				.sd_wait(sd_wait[gi]),
 				.beeper(m_beeper[gi]),
 				.mic(m_mic[gi]),
 				.a_req(cpu_req[gi]),
@@ -529,6 +608,29 @@ generate
 				.late(m_late[gi]),
 				.nz(m_nz[gi])
 			);
+
+			// the emulated card on the image of slot gi; reset with the machine and while the DivMMC is off
+			kg_sd_emu #(.CACHE(0)) sd_emu(
+				.clk(clk_bus),
+				.reset(m_reset | ~sw_divmmc[gi]),
+				.sclk(spi_sck[gi]),
+				.mosi(spi_mosi[gi]),
+				.cs_n(spi_cs_n[gi] | ~sw_sd_img[gi]),
+				.miso(emu_miso[gi]),
+				.img_mounted(sdc_img_mounted[gi]),
+				.img_size(|sdc_img_size[63:32] ? 32'hFFFFFE00 : sdc_img_size[31:0]),
+				.hd_rd(hd_rd[gi]),
+				.hd_wr(hd_wr[gi]),
+				.hd_lba(hd_lba[gi*32 +: 32]),
+				.hd_busy(sdc_busy && sdc_slot == gi),
+				.hd_done(sdc_done && sdc_slot == gi),
+				.hd_error(sdc_error),
+				.hd_byte_in_strobe(sdc_byte_in_strobe && sdc_slot == gi),
+				.hd_byte_addr(sdc_byte_addr),
+				.hd_byte_in_data(sdc_byte_in_data),
+				.hd_byte_out_data(hd_byte_out[gi*8 +: 8]),
+				.waiting(emu_wait[gi])
+			);
 		end else begin : g_off
 			assign cpu_req[gi] = 1'b0;
 			assign cpu_we[gi] = 1'b0;
@@ -540,6 +642,15 @@ generate
 			assign m_mic[gi] = 1'b0;
 			assign m_late[gi] = 1'b0;
 			assign m_nz[gi] = 1'b0;
+			assign spi_sck[gi] = 1'b0;
+			assign spi_mosi[gi] = 1'b1;
+			assign spi_cs_n[gi] = 1'b1;
+			assign emu_miso[gi] = 1'b1;
+			assign emu_wait[gi] = 1'b0;
+			assign hd_rd[gi] = 1'b0;
+			assign hd_wr[gi] = 1'b0;
+			assign hd_lba[gi*32 +: 32] = 32'd0;
+			assign hd_byte_out[gi*8 +: 8] = 8'd0;
 			assign m_pix[gi*4 +: 4] = 4'd0;
 			assign q_words[gi*16 +: 16] = 16'd0;
 			assign q_brds[gi*3 +: 3] = 3'd0;
@@ -564,6 +675,7 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.flash(frame[4]),
 	.full(full),
 	.sel(sel),
+	.rim_col(sw_frame_col),
 	.pix(m_pix[sel*4 +: 4]),
 	.q_go(q_go),
 	.q_vc(q_vc),
