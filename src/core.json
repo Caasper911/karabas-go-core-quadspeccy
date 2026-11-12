@@ -1,0 +1,29 @@
+{
+    "id": "quadspeccy",
+    "name": "Quad Speccy",
+    "visible": true,
+    "type": "osd",
+    "order": 20,
+    "eeprom_bank": 255,
+    "rtc_mode": 0,
+    "roms": [
+    {"filename": "roms/128.rom", "address": 0},
+    {"filename": "roms/48.rom", "address": 16384},
+    {"filename": "roms/128.rom", "address": 65536},
+    {"filename": "roms/48.rom", "address": 81920},
+    {"filename": "roms/128.rom", "address": 131072},
+    {"filename": "roms/48.rom", "address": 147456},
+    {"filename": "roms/128.rom", "address": 196608},
+    {"filename": "roms/48.rom", "address": 212992}
+    ],
+    "boards": {
+        "go": {"build": "26111201", "bitstream": "karabas_go.bin"}
+    },
+    "osd": [
+    {"type": "S", "name": "Joystick L", "options": ["Kempston", "Sinclair1", "Sinclair2", "Cursor", "QAOPM", "QAOPS"], "default": 0, "hotkey": "Menu+J"},
+    {"type": "S", "name": "Joystick R", "options": ["Kempston", "Sinclair1", "Sinclair2", "Cursor", "QAOPM", "QAOPS"], "default": 1, "hotkey": "Menu+R"},
+    {"type": "N", "name": "Pause", "options": ["Off", "On"], "default": 0, "hotkey": "Menu+P"},
+    {"type": "T", "name": "Reset", "options": null, "default": 0, "hotkey": "F12"},
+    {"type": "T", "name": "Reset All", "options": null, "default": 0, "hotkey": "Menu+F12"}
+    ]
+}
