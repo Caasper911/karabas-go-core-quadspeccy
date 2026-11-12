@@ -30,7 +30,7 @@
 */
 
 module karabas_go_top #(
-	parameter NUM_MACHINES = 1
+	parameter NUM_MACHINES = 4
 ) (
 	input wire CLK_50MHZ,
 
