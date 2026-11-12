@@ -66,4 +66,6 @@ in the same change as the code they describe.
 - `rtl/hid/zx_kbd.v`: HID report to the ZX matrix, Win+1..4 / Win+` hotkeys.
 - `karabas_go_top.v`: `NUM_MACHINES` (1 now), ROM loader FIFO (MCU address bits 17..16 = machine, 15..0 = offset in
   the ROM area at 0x20000 of its bank), soft switches in the order of `core.json` "osd".
-- `rtl/t80`: T80 (version 351) copied from the TS-Conf core.
+- `rtl/tv80`: the CPU (tv80 of karabas_go_v6z80p, with its X / Y flag fixes of CPI / CPD), `pentagon` `CPU = 1`; its
+  `mc` / `ts` are one-hot, the wrapper turns them into T80 numbers. `rtl/t80`: T80 (version 351 of TS-Conf),
+  `CPU = 0`, kept as the reference.

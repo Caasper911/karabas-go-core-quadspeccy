@@ -47,7 +47,7 @@
 */
 
 module pentagon #(
-	parameter CPU = 0      // 1 tv80, 0 T80
+	parameter CPU = 1      // 1 tv80, 0 T80
 ) (
 	input wire clk,
 	input wire reset,
