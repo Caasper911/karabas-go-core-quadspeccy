@@ -46,7 +46,9 @@
  hc 128) for the border of the quad view (q_brd_addr -> q_brd).
 */
 
-module pentagon (
+module pentagon #(
+	parameter CPU = 0      // 1 tv80, 0 T80
+) (
 	input wire clk,
 	input wire reset,
 	input wire pause,
@@ -121,36 +123,75 @@ wire cpu_wait_n;
 wire [7:0] cpu_di;
 reg [7:0] cpu_di_reg = 8'd0;
 
-T80 #(.Mode(0), .IOWait(1)) cpu (
-	.RESET_n(~reset),
-	.CLK_n(clk),
-	.CEN(cpu_cen),
-	.WAIT_n(cpu_wait_n),
-	.INT_n(int_n),
-	.NMI_n(~nmi),
-	.BUSRQ_n(1'b1),
-	.M1_n(),
-	.IORQ(cpu_iorq),
-	.NoRead(cpu_noread),
-	.Write(cpu_write),
-	.RFSH_n(),
-	.HALT_n(),
-	.BUSAK_n(),
-	.A(cpu_a),
-	.DInst(cpu_di),
-	.DI(cpu_di_reg),
-	.DO(cpu_do),
-	.MC(cpu_mc),
-	.TS(cpu_ts),
-	.IntCycle_n(cpu_intcycle_n),
-	.IntE(),
-	.Stop(),
-	.R800_mode(1'b0),
-	.out0(1'b0),
-	.REG(),
-	.DIRSet(1'b0),
-	.DIR(212'd0)
-);
+// The CPU: CPU = 1 tv80 (Verilog, of karabas_go_v6z80p: T80 ported to Verilog, with its fixes of the X / Y flags of
+// CPI / CPD; ~40 % fewer LUTs than T80), 0 T80 (VHDL, version 351 of TS-Conf). Both give the same signals of the
+// T80 core (MC, TS, Write, NoRead, IORQ, IntCycle_n) to the bus logic below.
+generate
+	if (CPU == 1) begin : g_tv80
+		// tv80 gives the machine cycle and the T-state one-hot (mc[0] = M1, ts[n] = Tn): to the numbers of T80
+		wire [6:0] tv_mc, tv_ts;
+		assign cpu_mc = tv_mc[0] ? 3'd1 : tv_mc[1] ? 3'd2 : tv_mc[2] ? 3'd3 : tv_mc[3] ? 3'd4 : tv_mc[4] ? 3'd5 :
+			tv_mc[5] ? 3'd6 : 3'd7;
+		assign cpu_ts = tv_ts[1] ? 3'd1 : tv_ts[2] ? 3'd2 : tv_ts[3] ? 3'd3 : tv_ts[4] ? 3'd4 : tv_ts[5] ? 3'd5 :
+			tv_ts[6] ? 3'd6 : 3'd0;
+		tv80_core #(.Mode(0), .IOWait(1)) cpu (
+			.reset_n(~reset),
+			.clk(clk),
+			.cen(cpu_cen),
+			.wait_n(cpu_wait_n),
+			.int_n(int_n),
+			.nmi_n(~nmi),
+			.busrq_n(1'b1),
+			.m1_n(),
+			.iorq(cpu_iorq),
+			.no_read(cpu_noread),
+			.write(cpu_write),
+			.rfsh_n(),
+			.halt_n(),
+			.busak_n(),
+			.A(cpu_a),
+			.dinst(cpu_di),
+			.di(cpu_di_reg),
+			.dout(cpu_do),
+			.mc(tv_mc),
+			.ts(tv_ts),
+			.intcycle_n(cpu_intcycle_n),
+			.IntE(),
+			.stop()
+		);
+	end else begin : g_t80
+		T80 #(.Mode(0), .IOWait(1)) cpu (
+			.RESET_n(~reset),
+			.CLK_n(clk),
+			.CEN(cpu_cen),
+			.WAIT_n(cpu_wait_n),
+			.INT_n(int_n),
+			.NMI_n(~nmi),
+			.BUSRQ_n(1'b1),
+			.M1_n(),
+			.IORQ(cpu_iorq),
+			.NoRead(cpu_noread),
+			.Write(cpu_write),
+			.RFSH_n(),
+			.HALT_n(),
+			.BUSAK_n(),
+			.A(cpu_a),
+			.DInst(cpu_di),
+			.DI(cpu_di_reg),
+			.DO(cpu_do),
+			.MC(cpu_mc),
+			.TS(cpu_ts),
+			.IntCycle_n(cpu_intcycle_n),
+			.IntE(),
+			.Stop(),
+			.R800_mode(1'b0),
+			.out0(1'b0),
+			.REG(),
+			.DIRSet(1'b0),
+			.DIR(212'd0)
+		);
+	end
+endgenerate
 
 // the T-state changes at a CPU clock; its decode is made in the clock after it
 reg cen_d = 1'b0;
@@ -258,19 +299,34 @@ always @(posedge clk) begin
 				wr_done <= 1'b0;
 				rd_cycle <= mem_rd;
 				if (mem_rd) begin
-					pend <= 1'b1;
-					pend_we <= 1'b0;
-					pend_addr <= map_addr;
+					// straight to the channel when it is free (a clock earlier than through pend: the ports of
+					// sdram_ctrl on clk_bus cost a clock each way)
+					if (!a_busy && !pend) begin
+						a_req <= ~a_req;
+						a_we <= 1'b0;
+						a_addr <= map_addr;
+					end else begin
+						pend <= 1'b1;
+						pend_we <= 1'b0;
+						pend_addr <= map_addr;
+					end
 				end
 			end
 			if (cpu_ts == 3'd2 && !wr_done) begin
 				if (mem_wr) begin
 					wr_done <= 1'b1;
 					if (!is_rom) begin
-						pend <= 1'b1;
-						pend_we <= 1'b1;
-						pend_addr <= map_addr;
-						pend_din <= cpu_do;
+						if (!a_busy && !pend) begin
+							a_req <= ~a_req;
+							a_we <= 1'b1;
+							a_addr <= map_addr;
+							a_din <= cpu_do;
+						end else begin
+							pend <= 1'b1;
+							pend_we <= 1'b1;
+							pend_addr <= map_addr;
+							pend_din <= cpu_do;
+						end
 					end
 				end
 				if (io_wr) begin

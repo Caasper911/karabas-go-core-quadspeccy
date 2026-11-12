@@ -18,6 +18,12 @@ module tb_pentagon;
 `define FRAMES 4
 `endif
 parameter FRAMES = `FRAMES;
+// the SDRAM bank of the machine (machine n of the core uses bank n; bank 3 has the last window of a round)
+`ifndef BANK
+`define BANK 0
+`endif
+parameter BANK = `BANK;
+localparam [31:0] BOFS = BANK << 19;   // word index of the bank in the model: {bank, row[9:0], column}
 `ifndef DIVMMC
 `define DIVMMC 1
 `endif
@@ -70,6 +76,7 @@ wire [15:0] sdr_dq;
 
 sdram_ctrl #(.INIT_WAIT(16'd200)) sdram(
 	.clk(clk_sys),
+	.clk_bus(clk_bus),
 	.a_req(a_req), .a_ack(a_ack), .a_we(a_we), .a_addr(a_addr), .a_din(a_din), .a_q(a_q),
 	.b_req(b_req), .b_ack(b_ack), .b_addr(b_addr), .b_q(b_q),
 	.ready(ready),
@@ -83,7 +90,7 @@ sdram_model #(.ROWS(1024), .RB(10)) chip(
 );
 
 // 128, 48, TR-DOS (FF), ESXDOS from 0x20000 (word 0x10000)
-initial $readmemh("roms.hex", chip.mem, 'h10000, 'h16FFF);
+initial $readmemh("roms.hex", chip.mem, BOFS + 'h10000, BOFS + 'h16FFF);
 
 wire ce7, ce_cpu, ce14, int_n, vga_half;
 wire [8:0] hc, vc, vga_x;
@@ -121,8 +128,8 @@ pentagon m(
 	.keys(40'd0), .kempston(8'd0), .tape_in(1'b0), .beeper(beeper), .mic(mic), .nmi(1'b0), .areset(~ready),
 	.divmmc_en(DIVMMC != 0), .spi_sck(spi_sck), .spi_mosi(spi_mosi), .spi_cs_n(spi_cs_n),
 	.spi_miso(USE_SDEMU ? emu_miso : 1'b1), .sd_wait(USE_SDEMU ? emu_wait : 1'b0),
-	.a_req(a_req[0]), .a_we(a_we[0]), .a_addr(a_addr[22:0]), .a_din(a_din[7:0]), .a_ack(a_ack[0]), .a_q(a_q[7:0]),
-	.b_req(b_req[0]), .b_addr(b_addr[22:0]), .b_ack(b_ack[0]), .b_q(b_q[7:0]),
+	.a_req(m_a_req), .a_we(m_a_we), .a_addr(m_a_addr), .a_din(m_a_din), .a_ack(a_ack[BANK]), .a_q(a_q[BANK*8 +: 8]),
+	.b_req(m_b_req), .b_addr(m_b_addr), .b_ack(b_ack[BANK]), .b_q(b_q[BANK*8 +: 8]),
 	.pix(pix), .quad(1'b0), .q_go(1'b0), .q_vc(8'd0), .q_buf(1'b0), .q_addr(6'd0), .q_word(),
 	.q_brd_addr(9'd0), .q_brd(), .late(late), .nz()
 );
@@ -176,12 +183,15 @@ kg_sd_emu #(.CACHE(0)) sd_emu(
 	.waiting(emu_wait)
 );
 
-assign a_req[3:1] = 3'b000;
-assign a_we[3:1] = 3'b000;
-assign a_addr[4*23-1:23] = 0;
-assign a_din[4*8-1:8] = 0;
-assign b_req[3:1] = 3'b000;
-assign b_addr[4*23-1:23] = 0;
+wire m_a_req, m_a_we, m_b_req;
+wire [22:0] m_a_addr, m_b_addr;
+wire [7:0] m_a_din;
+assign a_req = {3'b000, m_a_req} << BANK;
+assign a_we = {3'b000, m_a_we} << BANK;
+assign a_addr = {69'd0, m_a_addr} << (23 * BANK);
+assign a_din = {24'd0, m_a_din} << (8 * BANK);
+assign b_req = {3'b000, m_b_req} << BANK;
+assign b_addr = {69'd0, m_b_addr} << (23 * BANK);
 
 // the data bus of the interrupt acknowledge: every CPU clock of T2 (the T80 takes the IM2 vector there)
 integer intacks = 0, intack_bad = 0;
@@ -194,6 +204,25 @@ always @(posedge clk_bus)
 				$display("%t intack: di %h wait_n %b", $time, m.cpu_di, m.cpu_wait_n);
 		end
 	end
+
+// the margin of the CPU reads: clk_bus clocks between the answer of the SDRAM (a_busy falls) and the CPU clock that
+// takes the data (end of T2); the smallest of the run
+integer bus_clk = 0, ack_at = 0, margin_min = 1000, margin_sum = 0, margin_n = 0;
+integer margin_hist [0:20];
+integer mh;
+initial for (mh = 0; mh <= 20; mh = mh + 1) margin_hist[mh] = 0;
+reg busy_d = 1'b0;
+always @(posedge clk_bus) begin
+	bus_clk = bus_clk + 1;
+	busy_d <= m.a_busy;
+	if (busy_d && !m.a_busy)
+		ack_at = bus_clk;
+	if (!reset && m.cpu_cen && m.cpu_ts == 3'd2 && m.rd_cycle && m.cpu_wait_n) begin
+		if (bus_clk - ack_at < margin_min)
+			margin_min = bus_clk - ack_at;
+		margin_hist[(bus_clk - ack_at) > 20 ? 20 : (bus_clk - ack_at)] = margin_hist[(bus_clk - ack_at) > 20 ? 20 : (bus_clk - ack_at)] + 1;
+	end
+end
 
 // the opcode fetches
 reg [15:0] last_pc = 16'd0;
@@ -212,7 +241,7 @@ reg [15:0] word;
 always @(posedge clk_bus)
 	if (!reset && m.cpu_cen && m.cpu_ts == 3'd2 && m.cpu_wait_n && m.rd_cycle) begin
 		chk_addr = m.a_addr;
-		word = chip.mem[chk_addr[22:1]];
+		word = chip.mem[BOFS + chk_addr[22:1]];
 		checked = checked + 1;
 		// the byte the CPU takes (cpu_di, after the data mux), not only the one of the SDRAM
 		if ((chk_addr[0] ? word[15:8] : word[7:0]) !== m.cpu_di) begin
@@ -230,7 +259,7 @@ task dump;
 	begin
 		f = $fopen(name, "w");
 		for (n = 0; n < 3456; n = n + 1)
-			$fdisplay(f, "%h", chip.mem[start + n]);
+			$fdisplay(f, "%h", chip.mem[BOFS + start + n]);
 		$fclose(f);
 	end
 endtask
@@ -254,10 +283,10 @@ always @(posedge clk_bus) begin
 			if (`SDTEST) begin : sdt
 				integer i;
 				reg [7:0] b;
-				$write("sdtest done %h:", chip.mem['h9200 >> 1][7:0]);
+				$write("sdtest done %h:", chip.mem[BOFS + ('h9200 >> 1)][7:0]);
 				for (i = 'h9000; i < 'h9160; i = i + 1) begin
 					if (i % 16 == 0) $write("%c%h:", 8'd10, i[15:0]);
-					b = i[0] ? chip.mem[('h08000 + (i - 'h8000)) >> 1][15:8] : chip.mem[('h08000 + (i - 'h8000)) >> 1][7:0];
+					b = i[0] ? chip.mem[BOFS + (('h08000 + (i - 'h8000)) >> 1)][15:8] : chip.mem[BOFS + (('h08000 + (i - 'h8000)) >> 1)][7:0];
 					$write(" %h", b);
 				end
 				$write("%c", 8'd10);
@@ -270,8 +299,11 @@ always @(posedge clk_bus) begin
 			if (DIVMMC && !`CUSTOM_ROM && (dv_fetches < 1000 || eb_xfers < 10))   // ESXDOS (not a test ROM)
 				errors = errors + 1;
 			$display("intack: %0d T2 clocks, %0d not FF; interrupts counted by the handler: %0d", intacks, intack_bad,
-				{chip.mem[('h08000 + 'h1000) >> 1]});
+				{chip.mem[BOFS + (('h08000 + 'h1000) >> 1)]});
 			errors = errors + intack_bad;
+			$write("read margin (clk_bus clocks from the answer to the CPU clock): min %0d; histogram", margin_min);
+			for (mh = 0; mh <= 20; mh = mh + 1) $write(" %0d", margin_hist[mh]);
+			$write("%c", 8'd10);
 			$display("tb_pentagon: %0d errors", errors);
 			$finish;
 		end

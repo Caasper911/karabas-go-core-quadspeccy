@@ -379,6 +379,7 @@ wire [4*8-1:0] a_din, a_q, b_q;
 
 sdram_ctrl sdram(
 	.clk(clk_sys),
+	.clk_bus(clk_bus),
 	.a_req(a_req), .a_ack(a_ack), .a_we(a_we), .a_addr(a_addr), .a_din(a_din), .a_q(a_q),
 	.b_req(b_req), .b_ack(b_ack), .b_addr(b_addr), .b_q(b_q),
 	.ready(sdram_ready),
@@ -414,12 +415,17 @@ wire [25:0] ld_fifo_q;
 reg ld_fifo_rd = 1'b0;
 reg [1:0] ld_st = 2'd0;
 
-kg_fifo #(.DW(26), .AW(4)) ld_fifo(
+// 256 words (one RAMB8; with 512 in a RAMB16 map crashed in its global placement): the MCU sends in bursts and has no flow control; a byte that finds the FIFO full is lost
+// (ld_ovf, sticky: square 2 of the diagnostics red). With 16 words the ESXDOS ROM of machine 4, the last file, came
+// broken after the ports of sdram_ctrl went to clk_bus (a longer loop per byte).
+wire ld_fifo_full;
+reg ld_ovf = 1'b0;
+kg_fifo #(.DW(26), .AW(8)) ld_fifo(
 	.clk(clk_bus),
 	.reset(areset),
 	.wr(loader_wr && loader_act && loader_addr[31:18] == 14'd0),
 	.din({loader_addr[17:0], loader_data}),
-	.full(),
+	.full(ld_fifo_full),
 	.rd(ld_fifo_rd),
 	.dout(ld_fifo_q),
 	.empty(ld_fifo_empty),
@@ -428,6 +434,9 @@ kg_fifo #(.DW(26), .AW(4)) ld_fifo(
 
 // a bank is busy while the controller has not answered its request (the loader's, or the CPU's: one side only)
 wire [3:0] ld_busy = ld_req ^ a_ack ^ cpu_req;
+always @(posedge clk_bus)
+	if (loader_wr && loader_act && ld_fifo_full)
+		ld_ovf <= 1'b1;
 // the loader's own requests in flight: ld_busy alone also holds the CPU's requests, so ld_hold on it would
 // reset the machine at its first memory read (found on the board: the machine never ran)
 reg [3:0] ld_out = 4'b0000;
@@ -686,7 +695,7 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.q_brds(q_brds),
 	// diagnostics of the selected machine (docs/PLAN.md): SDRAM ready, ROM loader done, reads non-zero, no late
 	.diag_en(1'b1),
-	.diag_ok({~m_late[sel], m_nz[sel], ~ld_hold, sdram_ready_b}),
+	.diag_ok({~m_late[sel], m_nz[sel], ~ld_hold & ~ld_ovf, sdram_ready_b}),
 	.diag_blink(frame[4]),
 	.r(video_r),
 	.g(video_g),

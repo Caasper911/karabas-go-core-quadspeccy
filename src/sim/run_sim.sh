@@ -34,6 +34,10 @@ vhdl work "../../rtl/t80/T80_ALU.vhd"
 vhdl work "../../rtl/t80/T80_MCode.vhd"
 vhdl work "../../rtl/t80/T80_Reg.vhd"
 vhdl work "../../rtl/t80/T80.vhd"
+verilog work "../../rtl/tv80/tv80_alu.v"
+verilog work "../../rtl/tv80/tv80_mcode.v"
+verilog work "../../rtl/tv80/tv80_reg.v"
+verilog work "../../rtl/tv80/tv80_core.v"
 verilog work "../../rtl/sdram/sdram_ctrl.v"
 verilog work "../../rtl/zx/zx_timing.v"
 verilog work "../../rtl/zx/pentagon.v"
@@ -46,7 +50,7 @@ PRJ
 
 cd work
 fuse -intstyle silent -incremental -lib unisims_ver -prj tb.prj -o $EXE -timeprecision_vhdl 1ps \
-	-d FRAMES=$FRAMES -d RESET_AT=${RESET_AT:-0} -d SDEMU=${SDEMU:-0} -d SDTEST=${SDTEST:-0} -d CUSTOM_ROM=$([ "$ESX" = ../roms/esxdos089.bin ] && echo 0 || echo 1) work.tb_pentagon work.glbl > fuse.log 2>&1 || { tail -30 fuse.log; exit 1; }
+	-d FRAMES=$FRAMES -d RESET_AT=${RESET_AT:-0} -d SDEMU=${SDEMU:-0} -d SDTEST=${SDTEST:-0} -d BANK=${BANK:-0} -d CUSTOM_ROM=$([ "$ESX" = ../roms/esxdos089.bin ] && echo 0 || echo 1) work.tb_pentagon work.glbl > fuse.log 2>&1 || { tail -30 fuse.log; exit 1; }
 echo "run all" > run.tcl
 echo "quit" >> run.tcl
 $EXE -intstyle silent -tclbatch run.tcl -testplusarg FRAMES=$FRAMES | tee sim.log | grep -vE "^(ISim|This is a|Time resolution|Simulator is doing|Finished circuit|WARNING: A WEBPACK)" || true
