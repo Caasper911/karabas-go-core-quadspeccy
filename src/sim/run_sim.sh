@@ -24,6 +24,8 @@ printf '\377%.0s' $(seq 16384) > work/ff16k.bin
 # SDTEST=1: the SD test program (sdtest.asm) in the place of the ESXDOS ROM
 ESX=../roms/esxdos089.bin
 if [ "${SDTEST:-0}" = 1 ]; then sjasmplus --nologo sdtest.asm > /dev/null && ESX=work/sdtest.bin; fi
+# TESTROM=<name>: <name>.asm in the place of the ESXDOS ROM
+if [ -n "${TESTROM:-}" ]; then sjasmplus --nologo $TESTROM.asm > /dev/null && ESX=work/$TESTROM.bin; fi
 $PY ../../tools/rom2hex.py ../roms/128.rom ../roms/48.rom work/ff16k.bin $ESX work/roms.hex
 
 cat > work/tb.prj <<PRJ
@@ -44,7 +46,7 @@ PRJ
 
 cd work
 fuse -intstyle silent -incremental -lib unisims_ver -prj tb.prj -o $EXE -timeprecision_vhdl 1ps \
-	-d FRAMES=$FRAMES -d RESET_AT=${RESET_AT:-0} -d SDEMU=${SDEMU:-0} -d SDTEST=${SDTEST:-0} work.tb_pentagon work.glbl > fuse.log 2>&1 || { tail -30 fuse.log; exit 1; }
+	-d FRAMES=$FRAMES -d RESET_AT=${RESET_AT:-0} -d SDEMU=${SDEMU:-0} -d SDTEST=${SDTEST:-0} -d CUSTOM_ROM=$([ "$ESX" = ../roms/esxdos089.bin ] && echo 0 || echo 1) work.tb_pentagon work.glbl > fuse.log 2>&1 || { tail -30 fuse.log; exit 1; }
 echo "run all" > run.tcl
 echo "quit" >> run.tcl
 $EXE -intstyle silent -tclbatch run.tcl -testplusarg FRAMES=$FRAMES | tee sim.log | grep -vE "^(ISim|This is a|Time resolution|Simulator is doing|Finished circuit|WARNING: A WEBPACK)" || true

@@ -414,7 +414,10 @@ always @(posedge clk)
 
 // data of a read: wait while it is not there
 assign cpu_wait_n = ~(rd_cycle & (pend | a_busy)) & ~eb_wait;
-assign cpu_di = io_rd ? port_q : (cpu_intcycle_n ? a_q : 8'hFF);
+// FF (Pentagon: pull-ups) only in the acknowledge M1 of an interrupt. IntCycle_n of the T80 stays low for the whole
+// answer to the interrupt (the acknowledge, the push of PC and the read of the IM2 vector from the table): FF on it
+// made every IM 2 vector FFFF (found on the board: programs with IM 2 crashed or restarted).
+assign cpu_di = io_rd ? port_q : ((m1_cycle && !cpu_intcycle_n) ? 8'hFF : a_q);
 
 // T80se: DI is taken into the register at the end of T2 (the instruction register takes DInst)
 always @(posedge clk)

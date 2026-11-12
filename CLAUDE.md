@@ -45,6 +45,9 @@ in the same change as the code they describe.
   `src/sim/sdtest.asm` (sjasmplus) in the place of the ESXDOS ROM: it sends CMD0/8/55/41/58/17 through the DivMMC
   ports and keeps the answers in RAM, the testbench prints them (2 frames are enough). ESXDOS itself reaches the card
   only after ~23 frames (it clears 5 RAM banks first).
+  `TESTROM=<name>` assembles `src/sim/<name>.asm` into that place (`im2test`: IM 2 with a vector table, the
+  testbench counts the interrupts its handler saw). The testbench compares every byte the CPU takes (`cpu_di`) with
+  the model.
 - ISim 14.7 has no `$writememh` / `$clog2`; inputs of VHDL from Verilog all connected.
 
 ## Design (see docs/ARCHITECTURE.md)

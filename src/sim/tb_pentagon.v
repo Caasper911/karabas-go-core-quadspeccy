@@ -29,6 +29,9 @@ parameter USE_SDEMU = `SDEMU;
 `ifndef SDTEST
 `define SDTEST 0
 `endif
+`ifndef CUSTOM_ROM
+`define CUSTOM_ROM 0
+`endif
 
 // DivMMC: fetches from its ROM, accesses of its RAM, exchanges on #EB
 integer dv_fetches = 0, dv_ram = 0, eb_xfers = 0, at_zero = 0;
@@ -180,6 +183,18 @@ assign a_din[4*8-1:8] = 0;
 assign b_req[3:1] = 3'b000;
 assign b_addr[4*23-1:23] = 0;
 
+// the data bus of the interrupt acknowledge: every CPU clock of T2 (the T80 takes the IM2 vector there)
+integer intacks = 0, intack_bad = 0;
+always @(posedge clk_bus)
+	if (!reset && m.cpu_cen && m.cpu_mc == 3'd1 && !m.cpu_intcycle_n && m.cpu_ts == 3'd2) begin
+		intacks = intacks + 1;
+		if (m.cpu_di !== 8'hFF || !m.cpu_wait_n) begin
+			intack_bad = intack_bad + 1;
+			if (intack_bad < 20)
+				$display("%t intack: di %h wait_n %b", $time, m.cpu_di, m.cpu_wait_n);
+		end
+	end
+
 // the opcode fetches
 reg [15:0] last_pc = 16'd0;
 integer fetches = 0;
@@ -199,10 +214,11 @@ always @(posedge clk_bus)
 		chk_addr = m.a_addr;
 		word = chip.mem[chk_addr[22:1]];
 		checked = checked + 1;
-		if ((chk_addr[0] ? word[15:8] : word[7:0]) !== m.a_q) begin
+		// the byte the CPU takes (cpu_di, after the data mux), not only the one of the SDRAM
+		if ((chk_addr[0] ? word[15:8] : word[7:0]) !== m.cpu_di) begin
 			data_errors = data_errors + 1;
 			if (data_errors < 10)
-				$display("%t read %h: cpu got %h, model has %h", $time, chk_addr, m.a_q, chk_addr[0] ? word[15:8] : word[7:0]);
+				$display("%t read %h: cpu got %h, model has %h", $time, chk_addr, m.cpu_di, chk_addr[0] ? word[15:8] : word[7:0]);
 		end
 	end
 
@@ -251,8 +267,11 @@ always @(posedge clk_bus) begin
 			errors = chip.errors + data_errors + (late ? 1 : 0) + (fetches < 1000 ? 1 : 0);
 			$display("p7ffd %h border %h; DivMMC: rom fetches %0d, ram accesses %0d, spi exchanges %0d, e3 %b%b %h",
 				m.p7ffd, m.border, dv_fetches, dv_ram, eb_xfers, m.dv_conmem, m.dv_mapram, m.dv_bank);
-			if (DIVMMC && (dv_fetches < 1000 || eb_xfers < 10))
+			if (DIVMMC && !`CUSTOM_ROM && (dv_fetches < 1000 || eb_xfers < 10))   // ESXDOS (not a test ROM)
 				errors = errors + 1;
+			$display("intack: %0d T2 clocks, %0d not FF; interrupts counted by the handler: %0d", intacks, intack_bad,
+				{chip.mem[('h08000 + 'h1000) >> 1]});
+			errors = errors + intack_bad;
 			$display("tb_pentagon: %0d errors", errors);
 			$finish;
 		end
