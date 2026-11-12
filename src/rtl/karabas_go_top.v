@@ -314,8 +314,8 @@ assign FT_OE_N = mcu_ft_vga_on ? 1'b0 : 1'b1;
 // soft switches
 
 // 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image)
-wire [15*8-1:0] softsw;
-kg_soft_switches #(.N(15), .INIT(120'h01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
+wire [19*8-1:0] softsw;
+kg_soft_switches #(.N(19), .INIT(152'h00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
 	.clk(clk_bus),
 	.command(softsw_command),
 	.regs(softsw),
@@ -331,6 +331,7 @@ wire [2:0] sw_frame_col = softsw[42:40];
 wire sw_nmi = softsw[48];
 wire [3:0] sw_divmmc = {softsw[13*8], softsw[11*8], softsw[9*8], softsw[7*8]};
 wire [3:0] sw_sd_img = {softsw[14*8], softsw[12*8], softsw[10*8], softsw[8*8]};
+wire [3:0] sw_acb = {softsw[18*8], softsw[17*8], softsw[16*8], softsw[15*8]};   // AY mix of machine n: 0 ABC, 1 ACB
 
 // ---------------------------------------------------------------------------------------------
 // keyboard
@@ -510,6 +511,10 @@ wire [4*16-1:0] q_words;
 wire [4*3-1:0] q_brds;
 
 wire [3:0] m_beeper, m_mic, m_late, m_nz;
+wire [3:0] m_ay_we;
+wire [4*5-1:0] m_ay_wa;
+wire [4*8-1:0] m_ay_wd, m_ay_rd;
+wire [4:0] ay_ra;
 
 // ---------------------------------------------------------------------------------------------
 // the CPUs: one tv80_quad for the four machines (docs/ARCHITECTURE.md). Slot cs of the 8 clocks of a T-state: machine
@@ -643,6 +648,11 @@ generate
 				.spi_cs_n(spi_cs_n[gi]),
 				.spi_miso(spi_miso[gi]),
 				.sd_wait(sd_wait[gi]),
+				.ay_we(m_ay_we[gi]),
+				.ay_wa(m_ay_wa[gi*5 +: 5]),
+				.ay_wd(m_ay_wd[gi*8 +: 8]),
+				.ay_ra(ay_ra),
+				.ay_rd(m_ay_rd[gi*8 +: 8]),
 				.beeper(m_beeper[gi]),
 				.mic(m_mic[gi]),
 				.a_req(cpu_req[gi]),
@@ -712,6 +722,10 @@ generate
 			assign b_req[gi] = 1'b0;
 			assign b_addr[gi*23 +: 23] = 23'd0;
 			assign m_beeper[gi] = 1'b0;
+			assign m_ay_we[gi] = 1'b0;
+			assign m_ay_wa[gi*5 +: 5] = 5'd0;
+			assign m_ay_wd[gi*8 +: 8] = 8'd0;
+			assign m_ay_rd[gi*8 +: 8] = 8'd0;
 			assign m_mic[gi] = 1'b0;
 			assign m_late[gi] = 1'b0;
 			assign m_nz[gi] = 1'b0;
@@ -797,11 +811,59 @@ assign VGA_VS = video_vs;
 assign V_CLK = v_clk;
 
 // ---------------------------------------------------------------------------------------------
-// sound: the beeper, MIC and tape input of the selected machine
+// sound: the beeper, MIC, tape input and TurboSound of the selected machine
+
+// TurboSound: two AY generators for the selected machine only. They get its register writes; when another machine
+// becomes selected (and at the start) they are loaded with its 32 register copies (ay_ra, one a clock; a write of
+// the machine goes first). The other machines keep their registers and are silent.
+reg [1:0] ay_sel = 2'd0;
+reg [5:0] ay_ld = 6'd32;
+wire s_ay_we = m_ay_we[sel];
+reg g_we = 1'b0;
+reg [4:0] g_wa = 5'd0;
+reg [7:0] g_wd = 8'd0;
+assign ay_ra = ay_ld[4:0] - 1'd1;
+always @(posedge clk_bus) begin
+	g_we <= 1'b0;
+	if (ay_sel != sel) begin
+		ay_sel <= sel;
+		ay_ld <= 6'd32;
+	end else if (s_ay_we) begin
+		g_we <= 1'b1;
+		g_wa <= m_ay_wa[sel*5 +: 5];
+		g_wd <= m_ay_wd[sel*8 +: 8];
+	end else if (ay_ld != 6'd0) begin
+		ay_ld <= ay_ld - 1'd1;
+		g_we <= 1'b1;
+		g_wa <= ay_ra;
+		g_wd <= m_ay_rd[sel*8 +: 8];
+	end
+end
+
+wire [7:0] ay0_a, ay0_b, ay0_c, ay1_a, ay1_b, ay1_c;
+ay_psg ay0(.clk(clk_bus), .we(g_we & ~g_wa[4]), .wa(g_wa[3:0]), .wd(g_wd), .ch_a(ay0_a), .ch_b(ay0_b), .ch_c(ay0_c));
+ay_psg ay1(.clk(clk_bus), .we(g_we & g_wa[4]), .wa(g_wa[3:0]), .wd(g_wd), .ch_a(ay1_a), .ch_b(ay1_b), .ch_c(ay1_c));
+
+// ABC: left A + B / 2, right C + B / 2; ACB: left A + C / 2, right B + C / 2 (as 2A + B, 11 bits for the two chips)
+wire s_acb = sw_acb[sel];
+wire [9:0] l0 = {ay0_a, 1'b0} + (s_acb ? ay0_c : ay0_b);
+wire [9:0] r0 = {s_acb ? ay0_b : ay0_c, 1'b0} + (s_acb ? ay0_c : ay0_b);
+wire [9:0] l1 = {ay1_a, 1'b0} + (s_acb ? ay1_c : ay1_b);
+wire [9:0] r1 = {s_acb ? ay1_b : ay1_c, 1'b0} + (s_acb ? ay1_c : ay1_b);
+reg [10:0] ay_l = 11'd0, ay_r = 11'd0;
+always @(posedge clk_bus) begin
+	ay_l <= l0 + l1;
+	ay_r <= r0 + r1;
+end
 
 wire s_beep = m_beeper[sel];
 wire s_mic = m_mic[sel];
-wire [15:0] audio = (s_beep ? 16'h2000 : 16'd0) + (s_mic ? 16'h0800 : 16'd0) + (TAPE_IN ? 16'h0400 : 16'd0);
+wire [15:0] beep = (s_beep ? 16'h2000 : 16'd0) + (s_mic ? 16'h0800 : 16'd0) + (TAPE_IN ? 16'h0400 : 16'd0);
+reg [15:0] audio_l = 16'd0, audio_r = 16'd0;
+always @(posedge clk_bus) begin
+	audio_l <= beep + {2'b00, ay_l, 3'b000};
+	audio_r <= beep + {2'b00, ay_r, 3'b000};
+end
 
 assign BEEPER = s_beep;
 assign TAPE_OUT = s_mic;
@@ -809,8 +871,8 @@ assign TAPE_OUT = s_mic;
 kg_pcm5102 #(.DIV_BITS(1)) pcm5102(
 	.clk(clk_bus),
 	.reset(areset),
-	.left(audio),
-	.right(audio),
+	.left(audio_l),
+	.right(audio_r),
 	.din(DAC_DAT),
 	.bck(DAC_BCK),
 	.lrck(DAC_LRCK)

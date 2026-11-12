@@ -69,6 +69,10 @@ in the same change as the code they describe.
 - `rtl/video/video_out.v`: scan doubler to 896 x 640 at 28 MHz (the 50 Hz VGA raster of TS-Conf, so the OSD
   offsets 120 / 72 fit). The quad view (milestone 3) is planned as a VGA-timed fetch per machine, not a frame buffer.
 - `rtl/hid/zx_kbd.v`: HID report to the ZX matrix, Win+1..4 / Win+` hotkeys.
+- TurboSound (AY only, no YM): each `pentagon` keeps the 32 registers of its two AY (distributed RAM, ports
+  `#FFFD` / `#BFFD`, chip select by writing `FF` / `FE` to `#FFFD`); only two generators `rtl/sound/ay_psg.v` in the top,
+  for the selected machine, loaded from its copies when the selection changes. OSD AY mix ABC / ACB per machine
+  (soft switches 15..18). `src/sim/tb_ay.v` checks the generator (tone, envelope shapes).
 - `karabas_go_top.v`: `NUM_MACHINES` (1 now), ROM loader FIFO (MCU address bits 17..16 = machine, 15..0 = offset in
   the ROM area at 0x20000 of its bank), soft switches in the order of `core.json` "osd".
 - `rtl/tv80`: the CPU, tv80 of karabas_go_v6z80p (with its X / Y flag fixes of CPI / CPD). One for the four machines:

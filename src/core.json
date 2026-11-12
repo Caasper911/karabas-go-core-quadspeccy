@@ -58,7 +58,7 @@
     ],
     "boards": {
         "go": {
-            "build": "26111203",
+            "build": "26111301",
             "bitstream": "karabas_go.bin"
         }
     },
@@ -165,6 +165,18 @@
             "hotkey": "F12"
         },
         {
+            "index": 15,
+            "key": "aymix1",
+            "type": "S",
+            "name": "AY mix",
+            "options": [
+                "ABC",
+                "ACB"
+            ],
+            "default": 0,
+            "page": 1
+        },
+        {
             "index": 7,
             "key": "divmmc1",
             "type": "S",
@@ -210,6 +222,18 @@
                 "item": "sd1",
                 "value": "Image"
             }
+        },
+        {
+            "index": 16,
+            "key": "aymix2",
+            "type": "S",
+            "name": "AY mix",
+            "options": [
+                "ABC",
+                "ACB"
+            ],
+            "default": 0,
+            "page": 2
         },
         {
             "index": 9,
@@ -259,6 +283,18 @@
             }
         },
         {
+            "index": 17,
+            "key": "aymix3",
+            "type": "S",
+            "name": "AY mix",
+            "options": [
+                "ABC",
+                "ACB"
+            ],
+            "default": 0,
+            "page": 3
+        },
+        {
             "index": 11,
             "key": "divmmc3",
             "type": "S",
@@ -304,6 +340,18 @@
                 "item": "sd3",
                 "value": "Image"
             }
+        },
+        {
+            "index": 18,
+            "key": "aymix4",
+            "type": "S",
+            "name": "AY mix",
+            "options": [
+                "ABC",
+                "ACB"
+            ],
+            "default": 0,
+            "page": 4
         },
         {
             "index": 13,

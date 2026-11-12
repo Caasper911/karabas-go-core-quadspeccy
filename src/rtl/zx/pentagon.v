@@ -78,6 +78,14 @@ module pentagon #(
 	input wire spi_miso,
 	input wire sd_wait,           // the emulated card waits for the MCU
 
+	// TurboSound (two AY): the register writes of the machine (to the generators when it is the selected one),
+	// its register copies read by index {chip, register} (to load the generators when it becomes selected)
+	output reg ay_we = 1'b0,
+	output reg [4:0] ay_wa = 5'd0,
+	output reg [7:0] ay_wd = 8'd0,
+	input wire [4:0] ay_ra,
+	output wire [7:0] ay_rd,
+
 	// SDRAM channel A (CPU)
 	output reg a_req = 1'b0,
 	output reg a_we = 1'b0,
@@ -285,12 +293,28 @@ end
 
 reg [7:0] spi_in = 8'hFF;   // the byte of the last exchange
 reg [7:0] eb_q = 8'hFF;     // what this IN of #EB gives: spi_in when it started its exchange
+// TurboSound: #FFFD (A15 = 1, A14 = 1, A1 = 0) register select or, with FF / FE (F8..FF: bit 0), the chip
+// (FF the first, FE the second); #BFFD (A14 = 0) data. The registers of the two chips are kept here (32 x 8 of
+// distributed RAM, the bits the AY has): the reads of #FFFD come from them, the generators (ay_psg, only for the
+// selected machine, in the top) get the writes and are loaded from them when the machine becomes selected.
+wire ay_port = cpu_a[15] & ~cpu_a[1];
+reg ay_chip = 1'b0;
+reg [3:0] ay_reg = 4'd0;
+reg ay_rv = 1'b1;             // the register select had 0 in bits 7..4 (else the chip is not addressed)
+reg [5:0] ay_clr = 6'd0;      // a reset clears the 32 registers (the AY RESET), one a clock
+reg [7:0] ay_ram [0:31];
+integer ay_i;
+initial for (ay_i = 0; ay_i < 32; ay_i = ay_i + 1) ay_ram[ay_i] = 8'd0;
+assign ay_rd = ay_ram[ay_ra];
+
 reg [7:0] port_q;
 always @* begin
 	if (dv_port_eb)
 		port_q = io_done ? eb_q : spi_in;
 	else if (!cpu_a[0])
 		port_q = {1'b1, tape_in, 1'b1, kb_col};
+	else if (ay_port && cpu_a[14])
+		port_q = ay_rv ? ay_ram[{ay_chip, ay_reg}] : 8'hFF;
 	else if (cpu_a[7:0] == 8'h1F)
 		port_q = kempston;
 	else
@@ -383,6 +407,49 @@ always @(posedge clk) begin
 		if (cpu_cen && cpu_ts == 3'd2 && cpu_wait_n && rd_cycle && a_q != 8'd0)
 			nz <= 1'b1;
 	end
+end
+
+// ---------------------------------------------------------------------------------------------
+// TurboSound registers
+
+// the bits of the register r the AY has (the rest read as 0)
+function [7:0] ay_mask;
+	input [3:0] r;
+	case (r)
+		4'd1, 4'd3, 4'd5, 4'd13: ay_mask = 8'h0F;
+		4'd6, 4'd8, 4'd9, 4'd10: ay_mask = 8'h1F;
+		default: ay_mask = 8'hFF;
+	endcase
+endfunction
+
+always @(posedge clk) begin
+	ay_we <= 1'b0;
+	if (reset) begin
+		ay_chip <= 1'b0;
+		ay_reg <= 4'd0;
+		ay_rv <= 1'b1;
+		ay_clr <= 6'd32;
+	end else if (ay_clr != 6'd0) begin
+		ay_clr <= ay_clr - 1'd1;
+		ay_we <= 1'b1;
+		ay_wa <= ay_clr[4:0] - 1'd1;
+		ay_wd <= 8'd0;
+	end else if (cen_d && cpu_ts == 3'd2 && !wr_done && io_wr && ay_port) begin
+		if (cpu_a[14]) begin
+			if (&cpu_do[7:3])
+				ay_chip <= ~cpu_do[0];
+			else begin
+				ay_reg <= cpu_do[3:0];
+				ay_rv <= (cpu_do[7:4] == 4'd0);
+			end
+		end else if (ay_rv) begin
+			ay_we <= 1'b1;
+			ay_wa <= {ay_chip, ay_reg};
+			ay_wd <= cpu_do & ay_mask(ay_reg);
+		end
+	end
+	if (ay_we)
+		ay_ram[ay_wa] <= ay_wd;
 end
 
 // ---------------------------------------------------------------------------------------------
