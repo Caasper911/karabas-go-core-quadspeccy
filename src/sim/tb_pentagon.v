@@ -122,16 +122,55 @@ zx_timing timing(
 wire [3:0] pix;
 wire late, beeper, mic;
 
-pentagon m(
+// QUAD = 1: the CPU of the machine is CPU 0 of a tv80_quad (as the top: slot counter on ce_cpu, the others in reset)
+`ifndef QUAD
+`define QUAD 0
+`endif
+reg [2:0] cslot = 3'd0;
+always @(posedge clk_bus)
+	cslot <= ce_cpu ? 3'd1 : cslot + 1'd1;
+wire [15:0] x_a;
+wire [7:0] x_do, x_dinst, x_di;
+wire [6:0] x_mc, x_ts;
+wire x_iorq, x_noread, x_write, x_intcycle_n, x_cen, x_wait_n, x_reset_n, x_nmi_n;
+generate
+	if (`QUAD) begin : g_quad
+		wire [4*16-1:0] qa;
+		wire [4*8-1:0] qdo;
+		wire [4*7-1:0] qmc, qts;
+		wire [3:0] qio, qnr, qwr, qic;
+		tv80_quad #(.Mode(0), .IOWait(1)) cpus (
+			.clk(clk_bus), .slot(cslot),
+			.reset_n({3'b000, x_reset_n}), .cen({3'b000, x_cen}), .wait_n({3'b111, x_wait_n}), .int_n({4{int_n}}),
+			.nmi_n({3'b111, x_nmi_n}), .dinst({24'hFFFFFF, x_dinst}), .di({24'hFFFFFF, x_di}),
+			.A(qa), .dout(qdo), .mc(qmc), .ts(qts), .m1_n(), .iorq(qio), .no_read(qnr), .write(qwr), .intcycle_n(qic),
+			.halt_n()
+		);
+		assign x_a = qa[15:0];
+		assign x_do = qdo[7:0];
+		assign x_mc = qmc[6:0];
+		assign x_ts = qts[6:0];
+		assign x_iorq = qio[0];
+		assign x_noread = qnr[0];
+		assign x_write = qwr[0];
+		assign x_intcycle_n = qic[0];
+	end
+endgenerate
+
+pentagon #(.CPU(`QUAD ? 2 : 1)) m(
 	.clk(clk_bus), .reset(reset), .pause(1'b0),
-	.ce7(ce7), .ce_cpu(ce_cpu), .hc(hc), .vc(vc), .int_n(int_n), .frame(frame),
+	.ce7(ce7), .ce_cpu(`QUAD ? (cslot == 3'd0) : ce_cpu), .hc(hc), .vc(vc), .int_n(int_n), .frame(frame),
 	.keys(40'd0), .kempston(8'd0), .tape_in(1'b0), .beeper(beeper), .mic(mic), .nmi(1'b0), .areset(~ready),
 	.divmmc_en(DIVMMC != 0), .spi_sck(spi_sck), .spi_mosi(spi_mosi), .spi_cs_n(spi_cs_n),
 	.spi_miso(USE_SDEMU ? emu_miso : 1'b1), .sd_wait(USE_SDEMU ? emu_wait : 1'b0),
 	.a_req(m_a_req), .a_we(m_a_we), .a_addr(m_a_addr), .a_din(m_a_din), .a_ack(a_ack[BANK]), .a_q(a_q[BANK*8 +: 8]),
 	.b_req(m_b_req), .b_addr(m_b_addr), .b_ack(b_ack[BANK]), .b_q(b_q[BANK*8 +: 8]),
 	.pix(pix), .quad(1'b0), .q_go(1'b0), .q_vc(8'd0), .q_buf(1'b0), .q_addr(6'd0), .q_word(),
-	.q_brd_addr(9'd0), .q_brd(), .late(late), .nz()
+	.q_brd_addr(9'd0), .q_brd(),
+	.x_a(x_a), .x_do(x_do), .x_mc(x_mc), .x_ts(x_ts), .x_iorq(x_iorq), .x_noread(x_noread), .x_write(x_write),
+	.x_intcycle_n(x_intcycle_n), .x_cen(x_cen), .x_wait_n(x_wait_n), .x_reset_n(x_reset_n), .x_nmi_n(x_nmi_n),
+	.x_dinst(x_dinst), .x_di(x_di),
+	.late(late), .nz()
 );
 
 // the emulated SD card (SDEMU = 1) as in the top, with a model of img_sdc: an image of 64 MB is mounted after the

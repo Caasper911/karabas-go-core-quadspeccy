@@ -47,7 +47,7 @@
 */
 
 module pentagon #(
-	parameter CPU = 1      // 1 tv80, 0 T80
+	parameter CPU = 1      // 1 tv80, 0 T80, 2 outside (one tv80_quad for the four machines, ports x_*)
 ) (
 	input wire clk,
 	input wire reset,
@@ -105,6 +105,22 @@ module pentagon #(
 	input wire [8:0] q_brd_addr,
 	output wire [2:0] q_brd,
 
+	// the CPU outside (CPU = 2): its outputs in, what it takes out (machine k: its slot 2k of tv80_quad)
+	input wire [15:0] x_a,
+	input wire [7:0] x_do,
+	input wire [6:0] x_mc,          // one-hot as tv80
+	input wire [6:0] x_ts,
+	input wire x_iorq,
+	input wire x_noread,
+	input wire x_write,
+	input wire x_intcycle_n,
+	output wire x_cen,
+	output wire x_wait_n,
+	output wire x_reset_n,
+	output wire x_nmi_n,
+	output wire [7:0] x_dinst,
+	output wire [7:0] x_di,
+
 	// debug, sticky until reset: a read was late (wait states were inserted); a read returned non-zero data
 	output reg late = 1'b0,
 	output reg nz = 1'b0
@@ -159,6 +175,17 @@ generate
 			.IntE(),
 			.stop()
 		);
+	end else if (CPU == 2) begin : g_outside
+		assign cpu_a = x_a;
+		assign cpu_do = x_do;
+		assign cpu_mc = x_mc[0] ? 3'd1 : x_mc[1] ? 3'd2 : x_mc[2] ? 3'd3 : x_mc[3] ? 3'd4 : x_mc[4] ? 3'd5 :
+			x_mc[5] ? 3'd6 : 3'd7;
+		assign cpu_ts = x_ts[1] ? 3'd1 : x_ts[2] ? 3'd2 : x_ts[3] ? 3'd3 : x_ts[4] ? 3'd4 : x_ts[5] ? 3'd5 :
+			x_ts[6] ? 3'd6 : 3'd0;
+		assign cpu_iorq = x_iorq;
+		assign cpu_noread = x_noread;
+		assign cpu_write = x_write;
+		assign cpu_intcycle_n = x_intcycle_n;
 	end else begin : g_t80
 		T80 #(.Mode(0), .IOWait(1)) cpu (
 			.RESET_n(~reset),
@@ -474,6 +501,14 @@ assign cpu_wait_n = ~(rd_cycle & (pend | a_busy)) & ~eb_wait;
 // answer to the interrupt (the acknowledge, the push of PC and the read of the IM2 vector from the table): FF on it
 // made every IM 2 vector FFFF (found on the board: programs with IM 2 crashed or restarted).
 assign cpu_di = io_rd ? port_q : ((m1_cycle && !cpu_intcycle_n) ? 8'hFF : a_q);
+
+// to the CPU outside (CPU = 2), as the ports of the CPU inside
+assign x_cen = cpu_cen;
+assign x_wait_n = cpu_wait_n;
+assign x_reset_n = ~reset;
+assign x_nmi_n = ~nmi;
+assign x_dinst = cpu_di;
+assign x_di = cpu_di_reg;
 
 // T80se: DI is taken into the register at the end of T2 (the instruction register takes DInst)
 always @(posedge clk)

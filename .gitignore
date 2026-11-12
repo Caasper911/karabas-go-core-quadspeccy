@@ -39,3 +39,6 @@ src/webtalk_pn.xml
 # simulation
 src/sim/work/
 src/sim/*.log
+
+# equivalence test of the quad CPU
+src/sim/work_q/

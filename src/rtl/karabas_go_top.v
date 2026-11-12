@@ -512,6 +512,43 @@ wire [4*3-1:0] q_brds;
 wire [3:0] m_beeper, m_mic, m_late, m_nz;
 
 // ---------------------------------------------------------------------------------------------
+// the CPUs: one tv80_quad for the four machines (docs/ARCHITECTURE.md). Slot cs of the 8 clocks of a T-state: machine
+// k has the cen of its CPU in slot 2k (machine 0 in the clock of ce_cpu), the peek of it in 2k+1.
+
+reg [2:0] cslot = 3'd0;
+always @(posedge clk_bus)
+	cslot <= ce_cpu ? 3'd1 : cslot + 1'd1;
+wire [3:0] ce_m = {cslot == 3'd6, cslot == 3'd4, cslot == 3'd2, cslot == 3'd0};
+
+wire [4*16-1:0] q_a;
+wire [4*8-1:0] q_do, q_dinst, q_di;
+wire [4*7-1:0] q_mc, q_ts;
+wire [3:0] q_iorq, q_noread, q_write, q_intcycle_n;
+wire [3:0] q_cen, q_wait_n, q_reset_n, q_nmi_n;
+
+tv80_quad #(.Mode(0), .IOWait(1)) cpus (
+	.clk(clk_bus),
+	.slot(cslot),
+	.reset_n(q_reset_n),
+	.cen(q_cen),
+	.wait_n(q_wait_n),
+	.int_n({4{int_n}}),
+	.nmi_n(q_nmi_n),
+	.dinst(q_dinst),
+	.di(q_di),
+	.A(q_a),
+	.dout(q_do),
+	.mc(q_mc),
+	.ts(q_ts),
+	.m1_n(),
+	.iorq(q_iorq),
+	.no_read(q_noread),
+	.write(q_write),
+	.intcycle_n(q_intcycle_n),
+	.halt_n()
+);
+
+// ---------------------------------------------------------------------------------------------
 // DivMMC: the SD cards
 
 wire [3:0] spi_sck, spi_mosi, spi_cs_n, spi_miso, sd_wait, emu_miso, emu_wait, hd_rd, hd_wr;
@@ -571,12 +608,12 @@ generate
 			always @(posedge clk_bus)
 				m_reset <= areset | ld_hold | sw_reset_all | hw_btn[1] | ((sw_reset | hw_btn[0]) && sel == gi);
 
-			pentagon m(
+			pentagon #(.CPU(2)) m(
 				.clk(clk_bus),
 				.reset(m_reset),
 				.pause(sw_pause),
 				.ce7(ce7),
-				.ce_cpu(ce_cpu),
+				.ce_cpu(ce_m[gi]),
 				.hc(hc),
 				.vc(vc),
 				.int_n(int_n),
@@ -614,6 +651,20 @@ generate
 				.q_word(q_words[gi*16 +: 16]),
 				.q_brd_addr(q_brd_addr),
 				.q_brd(q_brds[gi*3 +: 3]),
+				.x_a(q_a[gi*16 +: 16]),
+				.x_do(q_do[gi*8 +: 8]),
+				.x_mc(q_mc[gi*7 +: 7]),
+				.x_ts(q_ts[gi*7 +: 7]),
+				.x_iorq(q_iorq[gi]),
+				.x_noread(q_noread[gi]),
+				.x_write(q_write[gi]),
+				.x_intcycle_n(q_intcycle_n[gi]),
+				.x_cen(q_cen[gi]),
+				.x_wait_n(q_wait_n[gi]),
+				.x_reset_n(q_reset_n[gi]),
+				.x_nmi_n(q_nmi_n[gi]),
+				.x_dinst(q_dinst[gi*8 +: 8]),
+				.x_di(q_di[gi*8 +: 8]),
 				.late(m_late[gi]),
 				.nz(m_nz[gi])
 			);
@@ -651,6 +702,12 @@ generate
 			assign m_mic[gi] = 1'b0;
 			assign m_late[gi] = 1'b0;
 			assign m_nz[gi] = 1'b0;
+			assign q_cen[gi] = 1'b0;
+			assign q_wait_n[gi] = 1'b1;
+			assign q_reset_n[gi] = 1'b0;
+			assign q_nmi_n[gi] = 1'b1;
+			assign q_dinst[gi*8 +: 8] = 8'hFF;
+			assign q_di[gi*8 +: 8] = 8'hFF;
 			assign spi_sck[gi] = 1'b0;
 			assign spi_mosi[gi] = 1'b1;
 			assign spi_cs_n[gi] = 1'b1;

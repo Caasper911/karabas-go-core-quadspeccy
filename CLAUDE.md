@@ -66,6 +66,10 @@ in the same change as the code they describe.
 - `rtl/hid/zx_kbd.v`: HID report to the ZX matrix, Win+1..4 / Win+` hotkeys.
 - `karabas_go_top.v`: `NUM_MACHINES` (1 now), ROM loader FIFO (MCU address bits 17..16 = machine, 15..0 = offset in
   the ROM area at 0x20000 of its bank), soft switches in the order of `core.json` "osd".
-- `rtl/tv80`: the CPU (tv80 of karabas_go_v6z80p, with its X / Y flag fixes of CPI / CPD), `pentagon` `CPU = 1`; its
-  `mc` / `ts` are one-hot, the wrapper turns them into T80 numbers. `rtl/t80`: T80 (version 351 of TS-Conf),
-  `CPU = 0`, kept as the reference.
+- `rtl/tv80`: the CPU, tv80 of karabas_go_v6z80p (with its X / Y flag fixes of CPI / CPD). One for the four machines:
+  `tv80_quad.v` around `tv80q_core.v`, which `tools/mkquad.py` GENERATES from `tv80_core.v` (every register a memory of
+  4 indexed by the CPU of the clock; never edit `tv80q_core.v`, change the generator or `tv80_core.v` and run
+  `src/sim/run_tv80q.sh`, which regenerates and runs the equivalence test against four `tv80_core`). Slot 2k of the 8
+  clocks of a T-state is the cen of machine k, 2k+1 its peek (outputs live, then kept). `pentagon` `CPU = 2` (outside
+  CPU, ports `x_*`); `CPU = 1` its own tv80, `CPU = 0` T80 (version 351 of TS-Conf), kept as references. tv80 gives
+  `mc` / `ts` one-hot, the wrapper turns them into T80 numbers.
