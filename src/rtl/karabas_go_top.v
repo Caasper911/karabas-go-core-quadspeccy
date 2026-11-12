@@ -5,7 +5,8 @@
  karabas_go_top.v
 
  Quad Speccy for Karabas Go: up to four Pentagon 128 running side by side, each in its own SDRAM
- bank (docs/ARCHITECTURE.md). Milestone 1: NUM_MACHINES = 1, full screen VGA.
+ bank (docs/ARCHITECTURE.md). NUM_MACHINES = 1 for now; the quad view (video_out) after power on,
+ Win + ` switches to the selected machine full screen and back.
 
  Clocks (one PLL on CLK_50MHZ, VCO 925 MHz, phase 0, as TS-Conf):
    clk_sys 84.09 MHz (/11)  the SDRAM controller
@@ -344,9 +345,8 @@ zx_kbd kbd(
 // the machine with the keyboard (machines that are not built are not selected)
 wire [1:0] sel = (kbd_sel < NUM_MACHINES) ? kbd_sel : 2'd0;
 
-// full screen / quad view (Win + `): milestone 1 shows the selected machine full screen only, the
-// quad view comes with the compositor (docs/PLAN.md)
-reg full = 1'b1;
+// full screen of the selected machine / quad view (Win + `); the quad view after power on
+reg full = 1'b0;
 always @(posedge clk_bus)
 	if (kbd_full_tgl)
 		full <= ~full;
@@ -454,6 +454,7 @@ endgenerate
 
 wire ce7, ce_cpu, ce14, int_n, vga_half;
 wire [8:0] hc, vc, vga_x;
+wire [9:0] vga_p, vga_l;
 wire [4:0] frame;
 
 zx_timing timing(
@@ -467,8 +468,19 @@ zx_timing timing(
 	.int_n(int_n),
 	.frame(frame),
 	.vga_x(vga_x),
-	.vga_half(vga_half)
+	.vga_half(vga_half),
+	.vga_p(vga_p),
+	.vga_l(vga_l)
 );
+
+// quad view: line requests from video_out, the line buffers and border memories of the machines
+wire [1:0] q_go;
+wire [7:0] q_vc;
+wire q_buf;
+wire [5:0] q_addr;
+wire [8:0] q_brd_addr;
+wire [4*16-1:0] q_words;
+wire [4*3-1:0] q_brds;
 
 wire [3:0] m_beeper, m_mic, m_late, m_nz;
 wire [4*4-1:0] m_pix;
@@ -506,6 +518,14 @@ generate
 				.b_ack(b_ack[gi]),
 				.b_q(b_q[gi*8 +: 8]),
 				.pix(m_pix[gi*4 +: 4]),
+				.quad(~full),
+				.q_go(q_go[gi / 2]),
+				.q_vc(q_vc),
+				.q_buf(q_buf),
+				.q_addr(q_addr),
+				.q_word(q_words[gi*16 +: 16]),
+				.q_brd_addr(q_brd_addr),
+				.q_brd(q_brds[gi*3 +: 3]),
 				.late(m_late[gi]),
 				.nz(m_nz[gi])
 			);
@@ -521,6 +541,8 @@ generate
 			assign m_late[gi] = 1'b0;
 			assign m_nz[gi] = 1'b0;
 			assign m_pix[gi*4 +: 4] = 4'd0;
+			assign q_words[gi*16 +: 16] = 16'd0;
+			assign q_brds[gi*3 +: 3] = 3'd0;
 		end
 	end
 endgenerate
@@ -531,13 +553,25 @@ endgenerate
 wire [7:0] video_r, video_g, video_b, osd_r, osd_g, osd_b;
 wire video_hs, video_vs;
 
-video_out video(
+video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.clk(clk_bus),
 	.ce7(ce7),
 	.hc(hc),
 	.vc(vc),
 	.vga_x(vga_x),
+	.vga_p(vga_p),
+	.vga_l(vga_l),
+	.flash(frame[4]),
+	.full(full),
+	.sel(sel),
 	.pix(m_pix[sel*4 +: 4]),
+	.q_go(q_go),
+	.q_vc(q_vc),
+	.q_buf(q_buf),
+	.q_addr(q_addr),
+	.q_words(q_words),
+	.q_brd_addr(q_brd_addr),
+	.q_brds(q_brds),
 	// diagnostics of the selected machine (docs/PLAN.md): SDRAM ready, ROM loader done, reads non-zero, no late
 	.diag_en(1'b1),
 	.diag_ok({~m_late[sel], m_nz[sel], ~ld_hold, sdram_ready_b}),

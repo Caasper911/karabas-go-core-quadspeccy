@@ -16,8 +16,10 @@
    border.
  - int_n: low 32 T from line 239, pixel 312 (T 156): 68 T before the end of the line, so the
    first paper pixel comes 80 * 224 + 68 = 17988 T after the start of INT (Pentagon).
- - vga_x / vga_half: the doubled raster of the scan doubler, 14 MHz pixels (2 clocks): the native
-   line is shown twice, first half vga_half 0, then 1; vga_x 0..447 as hc.
+ - vga_p 0..895: the clock in the line of the doubled raster (two per native line, vga_half 0 then 1);
+   vga_x = vga_p / 2, the 14 MHz pixel 0..447 (as hc in the scan doubler);
+   vga_l 0..639: the doubled line, 2 * vc + vga_half (it changes with vga_p, not with vc: the native frame is
+   exactly 640 doubled lines, so the two stay locked).
 */
 
 module zx_timing (
@@ -31,9 +33,13 @@ module zx_timing (
 	output reg [8:0] vc = 9'd0,
 	output reg int_n = 1'b1,
 	output reg [4:0] frame = 5'd0,
-	output reg [8:0] vga_x = 9'd0,
-	output reg vga_half = 1'b0
+	output wire [8:0] vga_x,
+	output reg vga_half = 1'b0,
+	output reg [9:0] vga_p = 10'd0,
+	output reg [9:0] vga_l = 10'd0
 );
+
+assign vga_x = vga_p[9:1];
 
 reg [1:0] sub = 2'd0;
 
@@ -46,7 +52,8 @@ always @(posedge clk) begin
 		ce_cpu <= 1'b0;
 		ce14 <= 1'b0;
 		int_n <= 1'b1;
-		vga_x <= 9'd0;
+		vga_p <= 10'd0;
+		vga_l <= 10'd0;
 		vga_half <= 1'b0;
 	end else begin
 		sub <= sub + 1'd1;
@@ -74,14 +81,13 @@ always @(posedge clk) begin
 				int_n <= 1'b1;
 		end
 
-		// 14 MHz: two VGA pixels per native pixel, the line twice
-		if (ce14) begin
-			if (vga_x == 9'd447) begin
-				vga_x <= 9'd0;
-				vga_half <= ~vga_half;
-			end else
-				vga_x <= vga_x + 1'd1;
-		end
+		// the doubled raster: 896 clocks per line, two lines per native line
+		if (vga_p == 10'd895) begin
+			vga_p <= 10'd0;
+			vga_half <= ~vga_half;
+			vga_l <= (vga_l == 10'd639) ? 10'd0 : vga_l + 1'd1;
+		end else
+			vga_p <= vga_p + 1'd1;
 	end
 end
 

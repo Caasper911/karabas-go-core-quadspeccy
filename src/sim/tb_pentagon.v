@@ -72,7 +72,8 @@ pentagon m(
 	.keys(40'd0), .kempston(8'd0), .tape_in(1'b0), .beeper(beeper), .mic(mic),
 	.a_req(a_req[0]), .a_we(a_we[0]), .a_addr(a_addr[22:0]), .a_din(a_din[7:0]), .a_ack(a_ack[0]), .a_q(a_q[7:0]),
 	.b_req(b_req[0]), .b_addr(b_addr[22:0]), .b_ack(b_ack[0]), .b_q(b_q[7:0]),
-	.pix(pix), .late(late)
+	.pix(pix), .quad(1'b0), .q_go(1'b0), .q_vc(8'd0), .q_buf(1'b0), .q_addr(6'd0), .q_word(),
+	.q_brd_addr(9'd0), .q_brd(), .late(late), .nz()
 );
 
 assign a_req[3:1] = 3'b000;

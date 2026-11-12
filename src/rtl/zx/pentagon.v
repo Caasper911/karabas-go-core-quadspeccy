@@ -25,6 +25,12 @@
  Video. The fetcher reads the bitmap and the attribute of a character from the screen page
  (#7FFD bit 3: page 7, else 5) through channel B at most 12 pixels before the character is shown,
  into a buffer of two characters; pix is the colour of hc / vc two ce7 later.
+
+ Quad view (quad = 1): the fetcher of the raster stops; instead a line of the paper is read when the
+ compositor asks for it (q_go: paper line q_vc into buffer q_buf, during the VGA line before it is
+ shown), 32 x {bitmap, attribute} into a line buffer the compositor reads (q_addr = {buffer,
+ column} -> q_word = {bitmap, attribute}). The border colour of each native line is kept (taken at
+ hc 128) for the border of the quad view (q_brd_addr -> q_brd).
 */
 
 module pentagon (
@@ -63,6 +69,16 @@ module pentagon (
 
 	// video: colour {bright, G, R, B} of the pixel hc / vc of two ce7 before
 	output reg [3:0] pix = 4'd0,
+
+	// quad view
+	input wire quad,
+	input wire q_go,
+	input wire [7:0] q_vc,
+	input wire q_buf,
+	input wire [5:0] q_addr,
+	output wire [15:0] q_word,
+	input wire [8:0] q_brd_addr,
+	output wire [2:0] q_brd,
 
 	// debug, sticky until reset: a read was late (wait states were inserted); a read returned non-zero data
 	output reg late = 1'b0,
@@ -266,11 +282,53 @@ wire fetch_ok = (fk == 6'd0) || ((vc == tl) && ({1'b0, hc} + AHEAD >= {fk[4:0], 
 wire [12:0] bmp_off = {tl[7:6], tl[2:0], tl[5:3], fk[4:0]};
 wire [12:0] atr_off = {3'b110, tl[7:3], fk[4:0]};
 
+// quad view: the line fetch
+reg [5:0] qk = 6'd32;           // column being fetched, 32: none
+reg [7:0] q_line = 8'd0;
+reg q_b = 1'b0;
+reg [7:0] q_bmp = 8'd0;
+reg [15:0] qbuf [0:63];
+assign q_word = qbuf[q_addr];
+
+wire [12:0] qbmp_off = {q_line[7:6], q_line[2:0], q_line[5:3], qk[4:0]};
+wire [12:0] qatr_off = {3'b110, q_line[7:3], qk[4:0]};
+
 always @(posedge clk) begin
 	if (reset) begin
 		fk <= 6'd32;
 		fst <= 2'd0;
+		qk <= 6'd32;
+	end else if (quad) begin
+		// ---- quad view: a line on request ----
+		fk <= 6'd32;
+		if (q_go) begin
+			q_line <= q_vc;
+			q_b <= q_buf;
+			qk <= 6'd0;
+			fst <= 2'd0;
+		end else begin
+			case (fst)
+				2'd0: if (!qk[5] && !b_busy) begin
+					b_addr <= {6'd0, scr7 ? 3'd7 : 3'd5, 1'b0, qbmp_off};
+					b_req <= ~b_req;
+					fst <= 2'd1;
+				end
+				2'd1: if (!b_busy) begin
+					q_bmp <= b_q;
+					b_addr <= {6'd0, scr7 ? 3'd7 : 3'd5, 1'b0, qatr_off};
+					b_req <= ~b_req;
+					fst <= 2'd2;
+				end
+				default: if (!b_busy) begin
+					qbuf[{q_b, qk[4:0]}] <= {q_bmp, b_q};
+					qk <= qk + 1'd1;
+					fst <= 2'd0;
+				end
+			endcase
+		end
 	end else begin
+		// ---- full screen: the raster ----
+		qk <= 6'd32;
 		if (ce7 && hc == 9'd436) begin
 			tl <= next_line;
 			fk <= (next_line < 9'd192) ? 6'd0 : 6'd32;
@@ -297,6 +355,13 @@ always @(posedge clk) begin
 		end
 	end
 end
+
+// the border of each native line, for the quad view
+reg [2:0] brd_mem [0:511];
+assign q_brd = brd_mem[q_brd_addr];
+always @(posedge clk)
+	if (ce7 && hc == 9'd128)
+		brd_mem[vc] <= border;
 
 // ---------------------------------------------------------------------------------------------
 // pixels: stage 1 loads / shifts, stage 2 makes the colour

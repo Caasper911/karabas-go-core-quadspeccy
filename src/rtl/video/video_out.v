@@ -14,19 +14,47 @@
  pix is the colour of the pixel hc / vc of two ce7 before (pentagon.v), so it is written at the
  position of hc / vc delayed by two ce7.
 
+ Quad view (full = 0): the visible part of the raster, 768 clocks x 608 lines, holds four quadrants of
+ 384 x 304: the whole visible picture of a Pentagon (64 + 256 + 64 pixels, 64 + 192 + 48 lines), one
+ pixel per clock of 28 MHz and one line per VGA line, half the size of the full screen in both
+ directions. Machine 2 * row + column. A paper line comes from the line buffer of its machine, read
+ from the SDRAM during the VGA line before it (q_go); the border has the colour of that native line
+ (taken by the machine). The selected machine has a yellow frame, the machines that are not built
+ are grey. The picture of the quad view is the screen memory at the time of the fetch, not the beam
+ of the machine: multicolour and border effects are not exact there.
+
  VGA (vga_x 0..447 at 14 MHz, dl the native line shown):
    vga_x 0..255 paper, 256..319 right border, 320..383 blank (hsync 328..375), 384..447 left border
    dl 240..255 blank, vsync in 242..243 (4 VGA lines); both syncs low active
 */
 
-module video_out (
+module video_out #(
+	parameter NUM_MACHINES = 4
+) (
 	input wire clk,
 	input wire ce7,
 	input wire [8:0] hc,
 	input wire [8:0] vc,
 	input wire [8:0] vga_x,
+	input wire [9:0] vga_p,
+	input wire [9:0] vga_l,
+	input wire flash,
+
+	// mode: 1 the selected machine full screen, 0 the quad view; sel the selected machine
+	input wire full,
+	input wire [1:0] sel,
 
 	input wire [3:0] pix,
+
+	// quad view: line requests to the machines of the top (q_go[0]: 0, 1) and bottom (q_go[1]: 2, 3) row,
+	// the line buffers and border memories of the machines (machine i: bits i)
+	output reg [1:0] q_go = 2'b00,
+	output reg [7:0] q_vc = 8'd0,
+	output reg q_buf = 1'b0,
+	output wire [5:0] q_addr,
+	input wire [4*16-1:0] q_words,
+	output wire [8:0] q_brd_addr,
+	input wire [4*3-1:0] q_brds,
 
 	// diagnostics: five squares (8 VGA pixels x 16 VGA lines) in the left border of the top border lines
 	// 264..271, x 388 + 12 * i: square i < 4 green when diag_ok[i], red when not; square 4 blinks white with
@@ -69,6 +97,67 @@ kg_sdpram #(.DW(4), .AW(10)) linebuf (
 // the line shown: the one before vc
 wire [8:0] dl = (vc == 9'd0) ? 9'd319 : vc - 1'd1;
 
+// ---------------------------------------------------------------------------------------------
+// quad view
+
+// the doubled line shown (full screen: 2 * dl + half) and the screen position: q from the left edge of
+// the picture (after the back porch, p 768), sy from its top (line 512, the first line of the top border)
+wire [9:0] ld = (vga_l < 10'd2) ? vga_l + 10'd638 : vga_l - 10'd2;
+wire [9:0] row = (vga_p >= 10'd768) ? ((ld == 10'd639) ? 10'd0 : ld + 1'd1) : ld;
+wire [9:0] sy = (row >= 10'd512) ? row - 10'd512 : row + 10'd128;
+wire [9:0] qx = (vga_p >= 10'd768) ? vga_p - 10'd768 : vga_p + 10'd128;
+
+wire q_vis = (qx < 10'd768) && (sy < 10'd608);
+wire col = (qx >= 10'd384);
+wire qrow = (sy >= 10'd304);
+wire [8:0] xq = col ? qx - 10'd384 : qx[8:0];
+wire [8:0] yq = qrow ? sy - 10'd304 : sy[8:0];
+// the native position of the pixel
+wire [8:0] hq = (xq < 9'd64) ? xq + 9'd384 : xq - 9'd64;
+wire [8:0] vq = (yq < 9'd64) ? yq + 9'd256 : yq - 9'd64;
+wire [1:0] qm = {qrow, col};
+
+assign q_addr = {sy[0], hq[7:3]};
+assign q_brd_addr = vq;
+
+wire [15:0] q_word = q_words[qm*16 +: 16];
+wire [2:0] q_brd = q_brds[qm*3 +: 3];
+
+// the request of the next line, at the start of a line of the picture
+wire [9:0] sy_n = (sy == 10'd639) ? 10'd0 : sy + 1'd1;
+wire [8:0] yq_n = (sy_n >= 10'd304) ? sy_n - 10'd304 : sy_n[8:0];
+wire [8:0] vq_n = (yq_n < 9'd64) ? yq_n + 9'd256 : yq_n - 9'd64;
+
+always @(posedge clk) begin
+	q_go <= 2'b00;
+	if (!full && vga_p == 10'd768 && sy_n < 10'd608 && vq_n < 9'd192) begin
+		q_go <= (sy_n >= 10'd304) ? 2'b10 : 2'b01;
+		q_vc <= vq_n[7:0];
+		q_buf <= sy_n[0];
+	end
+end
+
+reg qa_vis = 1'b0, qa_paper = 1'b0, qa_rim = 1'b0, qa_absent = 1'b0;
+reg [15:0] qa_word = 16'd0;
+reg [2:0] qa_brd = 3'd0;
+reg [2:0] qa_bit = 3'd0;
+
+always @(posedge clk) begin
+	qa_vis <= q_vis;
+	qa_paper <= (hq < 9'd256) && (vq < 9'd192);
+	qa_rim <= (qm == sel) && (xq < 9'd2 || xq >= 9'd382 || yq < 9'd2 || yq >= 9'd302);
+	qa_absent <= (qm >= NUM_MACHINES);
+	qa_word <= q_word;
+	qa_brd <= q_brd;
+	qa_bit <= hq[2:0];
+end
+
+wire qa_ink = qa_word[15 - qa_bit] ^ (qa_word[7] & flash);
+wire [3:0] q_pix = qa_paper ? (qa_ink ? {qa_word[6], qa_word[2:0]} : {qa_word[6], qa_word[5:3]}) : {1'b0, qa_brd};
+
+// the colour of the line buffer (full) or of the quad view
+wire [3:0] c_pix = full ? lb_q : q_pix;
+
 reg blank_a = 1'b1, hs_a = 1'b1, vs_a = 1'b1;
 reg diag_a = 1'b0;
 reg [2:0] diag_i = 3'd0;
@@ -94,6 +183,10 @@ always @(posedge clk) begin
 		r <= 8'd0;
 		g <= 8'd0;
 		b <= 8'd0;
+	end else if (!full && !qa_vis) begin
+		r <= 8'd0;
+		g <= 8'd0;
+		b <= 8'd0;
 	end else if (diag_a) begin
 		if (diag_i == 3'd4) begin
 			r <= diag_blink ? 8'hFF : 8'h00;
@@ -104,10 +197,18 @@ always @(posedge clk) begin
 			g <= diag_ok[diag_i[1:0]] ? 8'hFF : 8'h00;
 			b <= 8'h00;
 		end
+	end else if (!full && qa_rim) begin
+		r <= 8'hFF;
+		g <= 8'hFF;
+		b <= 8'h00;
+	end else if (!full && qa_absent) begin
+		r <= 8'h30;
+		g <= 8'h30;
+		b <= 8'h30;
 	end else begin
-		r <= lb_q[1] ? (lb_q[3] ? 8'hFF : 8'hCA) : 8'd0;
-		g <= lb_q[2] ? (lb_q[3] ? 8'hFF : 8'hCA) : 8'd0;
-		b <= lb_q[0] ? (lb_q[3] ? 8'hFF : 8'hCA) : 8'd0;
+		r <= c_pix[1] ? (c_pix[3] ? 8'hFF : 8'hCA) : 8'd0;
+		g <= c_pix[2] ? (c_pix[3] ? 8'hFF : 8'hCA) : 8'd0;
+		b <= c_pix[0] ? (c_pix[3] ? 8'hFF : 8'hCA) : 8'd0;
 	end
 end
 
