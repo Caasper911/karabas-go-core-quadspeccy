@@ -26,6 +26,7 @@ in the same change as the code they describe.
   them (`ISE_ENV`, exports; without LOCALAPPDATA the Python install manager behind `python` installs a Python
   into `src/`); `$$$$PATH` in `XIL` because
   it is expanded twice (inside `define board`). Linux: sources `/opt/Xilinx/14.7/ISE_DS/settings64.sh`.
+- `map` runs single-threaded (`-mt off` in `MAP_OPT`): with `-mt 2` it crashed in Global Placement without a message.
 - Sources are listed in `src/karabas_go.prj` (the shared modules as `"../modules/rtl/..."`; `kg_mcu` needs all its
   `kg_mcu_*` decoders, `kg_osd_overlay` needs `kg_pix_doubler`).
 - `make_core.py` comes from the sibling `../karabas-go-tools/make_core/`.
@@ -48,6 +49,10 @@ in the same change as the code they describe.
   `TESTROM=<name>` assembles `src/sim/<name>.asm` into that place (`im2test`: IM 2 with a vector table, the
   testbench counts the interrupts its handler saw). The testbench compares every byte the CPU takes (`cpu_di`) with
   the model.
+- `src/sim/run_t80cmp.sh [clocks]`: T80 (the reference) against tv80_core clock for clock (`tb_t80cmp.v`, made from
+  `tb_tv80q.v`): opcode fetch starts, port writes, interrupt acknowledges (`MEMWR` also memory writes). Found the
+  timing bugs of tv80 fixed in `tv80_core.v` / `tv80_mcode.v` (marked `karabas:`). A hierarchical reference from
+  Verilog into the VHDL T80 crashes fuse.
 - ISim 14.7 has no `$writememh` / `$clog2`; inputs of VHDL from Verilog all connected.
 
 ## Design (see docs/ARCHITECTURE.md)

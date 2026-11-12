@@ -315,9 +315,7 @@ always @(posedge clk) begin
 		rd_cycle <= 1'b0;
 		wr_done <= 1'b0;
 		p7ffd <= 6'd0;
-		border <= 3'd0;
-		beeper <= 1'b0;
-		mic <= 1'b0;
+		// port #FE (border, MIC, beeper) is kept over a reset, as the ULA: the border stays until the ROM sets it
 		late <= 1'b0;
 		nz <= 1'b0;
 	end else begin

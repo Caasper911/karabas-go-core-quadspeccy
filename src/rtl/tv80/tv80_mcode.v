@@ -1019,7 +1019,7 @@ module tv80_mcode
                         
                         MCycle[1] :
                           begin
-                            TStates = 3'b100;
+                            // karabas: 3 T-states (the default) as a Z80 and T80 (whose "TStates <= 100" is commented out); tv80 had 4
                             Write = 1'b1;
                             IncDec_16 = 4'b1111;
                             Set_Addr_To = aSP;
@@ -1028,7 +1028,7 @@ module tv80_mcode
                         
                         MCycle[2] :
                           begin
-                            TStates = 3'b100;
+                            // karabas: 3 T-states (the default) as a Z80 and T80 (whose "TStates <= 100" is commented out); tv80 had 4
                             Write = 1'b1;
                           end
                         
@@ -1052,7 +1052,7 @@ module tv80_mcode
                         
                         MCycle[1] :
                           begin
-                            TStates = 3'b100;
+                            // karabas: 3 T-states (the default) as a Z80 and T80 (whose "TStates <= 100" is commented out); tv80 had 4
                             Write = 1'b1;
                             IncDec_16 = 4'b1111;
                             Set_Addr_To = aSP;
@@ -1061,7 +1061,7 @@ module tv80_mcode
                         
                         MCycle[2] :
                           begin
-                            TStates = 3'b100;
+                            // karabas: 3 T-states (the default) as a Z80 and T80 (whose "TStates <= 100" is commented out); tv80 had 4
                             Write = 1'b1;
                           end
                         
@@ -2479,6 +2479,9 @@ module tv80_mcode
                   case (1'b1) // MCycle
                     MCycle[0] :
                       begin
+                        // karabas: M1 of 5 T-states, M3 of 3, as a Z80 and T80 (0242 "Fixed I/O instruction timing");
+                        // tv80 had 4 and 4 (the input one T-state early)
+                        TStates = 3'b101;
                         Set_Addr_To = aBC;
                         Set_BusB_To = 4'b1010;
                         Set_BusA_To = 4'b0000;
@@ -2504,7 +2507,6 @@ module tv80_mcode
                           begin
 			    IncDec_16 = 4'b1110;
                           end
-                        TStates = 3'b100;
                         Write = 1'b1;
                         I_BTR = 1'b1;
                       end // case: 3

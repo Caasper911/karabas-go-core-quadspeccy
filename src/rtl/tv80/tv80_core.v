@@ -1310,7 +1310,10 @@ module tv80_core (/*AUTOARG*/
                                   NMICycle <= `TV80DELAY 1'b1;
                                   IntE_FF1 <= `TV80DELAY 1'b0;
                                 end 
-                              else if ((IntE_FF1 == 1'b1 && INT_s == 1'b1) && Prefix == 2'b00 && SetEI == 1'b0 ) 
+                              // karabas: INT as it is at this cen (the end of the last T-state), as T80 351; tv80 took INT_s,
+                              // taken a T-state before (an interrupt taken one instruction later now and then; found by
+                              // src/sim/tb_t80cmp.v)
+                              else if ((IntE_FF1 == 1'b1 && int_n == 1'b0) && Prefix == 2'b00 && SetEI == 1'b0 ) 
                                 begin
                                   IntCycle <= `TV80DELAY 1'b1;
                                   IntE_FF1 <= `TV80DELAY 1'b0;
@@ -1386,7 +1389,9 @@ module tv80_core (/*AUTOARG*/
   always @(/*AUTOSENSE*/IntCycle or NMICycle or mcycle)
     begin
       Auto_Wait = 1'b0;
-      if (IntCycle == 1'b1 || NMICycle == 1'b1 ) 
+      // karabas: the two automatic wait states only in the M1 of an INT acknowledge, as a Z80 and T80; tv80 had them
+      // in the M1 of an NMI too (an NMI answer 2 T-states long; found by src/sim/tb_t80cmp.v)
+      if (IntCycle == 1'b1 ) 
         begin
           if (mcycle[0] ) 
             begin

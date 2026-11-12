@@ -35,6 +35,9 @@ module video_out #(
 	input wire ce7,
 	input wire [8:0] hc,
 	input wire [8:0] vc,
+	input wire w_ce7,               // the raster of the machine shown full screen (its pix), for the line buffer
+	input wire [8:0] w_hc,
+	input wire [8:0] w_vc,
 	input wire [8:0] vga_x,
 	input wire [9:0] vga_p,
 	input wire [9:0] vga_l,
@@ -75,10 +78,10 @@ reg [8:0] hd1 = 9'd0, hd2 = 9'd0;
 reg [8:0] vd1 = 9'd0, vd2 = 9'd0;
 
 always @(posedge clk)
-	if (ce7) begin
-		hd1 <= hc;
+	if (w_ce7) begin
+		hd1 <= w_hc;
 		hd2 <= hd1;
-		vd1 <= vc;
+		vd1 <= w_vc;
 		vd2 <= vd1;
 	end
 
@@ -86,7 +89,7 @@ wire [3:0] lb_q;
 
 kg_sdpram #(.DW(4), .AW(10)) linebuf (
 	.clka(clk),
-	.wea(ce7),
+	.wea(w_ce7),
 	.addra({vd2[0], hd2}),
 	.dina(pix),
 	.clkb(clk),

@@ -54,7 +54,9 @@ KG = quadspeccy.kg
 JSON = core.json
 
 MAP_T_go = 2
-MAP_OPT = -logic_opt off -ol high -xe n -xt 0 -register_duplication off -r 4 -global_opt off -mt 2 -detail -ir off -pr b -lc off -power off
+# map single-threaded (-mt off): with -mt 2 map crashed now and then in its Global Placement without a message (four
+# times in a day, then on every run of one netlist; the same netlist went through with -mt off)
+MAP_OPT = -logic_opt off -ol high -xe n -xt 0 -register_duplication off -r 4 -global_opt off -mt off -detail -ir off -pr b -lc off -power off
 PAR_OPT = -ol high -xe n -mt 4
 
 # included or read by the sources, not in the prj

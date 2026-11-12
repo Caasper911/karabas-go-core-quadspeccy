@@ -42,3 +42,4 @@ src/sim/*.log
 
 # equivalence test of the quad CPU
 src/sim/work_q/
+src/sim/work_c/

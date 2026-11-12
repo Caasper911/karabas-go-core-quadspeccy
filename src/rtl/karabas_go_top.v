@@ -515,6 +515,19 @@ wire [3:0] m_beeper, m_mic, m_late, m_nz;
 // the CPUs: one tv80_quad for the four machines (docs/ARCHITECTURE.md). Slot cs of the 8 clocks of a T-state: machine
 // k has the cen of its CPU in slot 2k (machine 0 in the clock of ce_cpu), the peek of it in 2k+1.
 
+// the raster of each machine, 2k clocks after the one of zx_timing as its CPU (raster_delay.v)
+wire [3:0] r_ce7, r_int_n;
+wire [4*9-1:0] r_hc, r_vc;
+wire [4*5-1:0] r_frame;
+generate
+	for (gi = 0; gi < 4; gi = gi + 1) begin : g_rd
+		raster_delay #(.D(2 * gi)) rd (
+			.clk(clk_bus), .ce7_i(ce7), .hc_i(hc), .vc_i(vc), .int_n_i(int_n), .frame_i(frame),
+			.ce7(r_ce7[gi]), .hc(r_hc[gi*9 +: 9]), .vc(r_vc[gi*9 +: 9]), .int_n(r_int_n[gi]), .frame(r_frame[gi*5 +: 5])
+		);
+	end
+endgenerate
+
 reg [2:0] cslot = 3'd0;
 always @(posedge clk_bus)
 	cslot <= ce_cpu ? 3'd1 : cslot + 1'd1;
@@ -532,7 +545,7 @@ tv80_quad #(.Mode(0), .IOWait(1)) cpus (
 	.reset_n(q_reset_n),
 	.cen(q_cen),
 	.wait_n(q_wait_n),
-	.int_n({4{int_n}}),
+	.int_n(r_int_n),
 	.nmi_n(q_nmi_n),
 	.dinst(q_dinst),
 	.di(q_di),
@@ -612,12 +625,12 @@ generate
 				.clk(clk_bus),
 				.reset(m_reset),
 				.pause(sw_pause),
-				.ce7(ce7),
+				.ce7(r_ce7[gi]),
 				.ce_cpu(ce_m[gi]),
-				.hc(hc),
-				.vc(vc),
-				.int_n(int_n),
-				.frame(frame),
+				.hc(r_hc[gi*9 +: 9]),
+				.vc(r_vc[gi*9 +: 9]),
+				.int_n(r_int_n[gi]),
+				.frame(r_frame[gi*5 +: 5]),
 				.keys(sel == gi ? kbd_keys : 40'd0),
 				.kempston(sel == gi ? kbd_kempston : 8'd0),
 				.tape_in(TAPE_IN),
@@ -735,6 +748,10 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.ce7(ce7),
 	.hc(hc),
 	.vc(vc),
+	// the line buffer of the full screen is written on the raster of the selected machine
+	.w_ce7(r_ce7[sel]),
+	.w_hc(r_hc[sel*9 +: 9]),
+	.w_vc(r_vc[sel*9 +: 9]),
 	.vga_x(vga_x),
 	.vga_p(vga_p),
 	.vga_l(vga_l),
