@@ -78,7 +78,8 @@ module video_out #(
 	output reg [7:0] g = 8'd0,
 	output reg [7:0] b = 8'd0,
 	output reg hs = 1'b1,
-	output reg vs = 1'b1
+	output reg vs = 1'b1,
+	output reg de = 1'b0      // the visible part (736 x 576): the data enable of HDMI
 );
 
 reg [8:0] hd1 = 9'd0, hd2 = 9'd0;
@@ -223,6 +224,7 @@ always @(posedge clk) begin
 	// stage b: the colour
 	hs <= hs_a;
 	vs <= vs_a;
+	de <= ~blank_a;
 	if (blank_a) begin
 		r <= 8'd0;
 		g <= 8'd0;

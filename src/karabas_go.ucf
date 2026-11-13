@@ -223,12 +223,13 @@ NET "FLASH_HOLD_N"  LOC="P12"  | IOSTANDARD = LVCMOS33; # CONF_IO3
 # ------------------------------------------------------------------------------------------------------------
 # Timing constraints
 #
-# Clocks, all from one PLL on CLK_50MHZ (VCO 925 MHz), phase 0 (rtl/karabas_go_top.v):
+# Clocks, all from one PLL on CLK_50MHZ (VCO 925 MHz), phase 0 (rtl/quadspeccy.v):
 #   pll_clk<0> 84.09 MHz clk_sys: the SDRAM controller (rtl/sdram/sdram_ctrl.v)
 #   pll_clk<1> 28.03 MHz clk_bus: the machines, video, keyboard, MCU link, OSD; clk_sys / 3, every edge of
 #                                 clk_bus is an edge of clk_sys. The requests of the machines go to the SDRAM
 #                                 controller and back as toggles between the two clocks without synchronisers:
 #                                 the PERIOD derived onto both outputs times these paths (11.9 ns).
+#   pll_clk<2>  7.97 MHz clk_8:   the clock of the FT812 (an ODDR2 on FT_CLK_OUT of the Mini boards), nothing else
 # The SDRAM clock is clk_sys inverted (ODDR2); the read data is taken on the falling clk_sys (CAS latency 2),
 # the timing of the General Sound SDRAM of the TS-Conf core on this board.
 # ------------------------------------------------------------------------------------------------------------

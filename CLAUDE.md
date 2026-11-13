@@ -20,7 +20,8 @@ in the same change as the code they describe.
 
 - `cd src && make go` (synthesis, implementation, bitstream, `quadspeccy.kg`); steps `go-xst`, `go-impl`, `go-core`;
   `go-report` utilization and timing of the last build. Every ISE step also writes to `src/karabas_<board>_build.log` (tee; the
-  synthesis starts it, each step adds a `===` header with the time): the user follows it with `tail -f`. Only the Go board for now (`BOARDS`); Mini / Mini G later.
+  synthesis starts it, each step adds a `===` header with the time): the user follows it with `tail -f`. Boards (`BOARDS`): go, mini, minig; `make` builds all
+  three into `quadspeccy.kg`, `make mini` one of them.
 - Windows: MSYS2 make from Git Bash, ISE in `/c/Xilinx/14.7/ISE_DS` (nt64 binaries, 32-bit bitgen). That make passes
   no TEMP / TMP / XILINXD_LICENSE_FILE / USERPROFILE / APPDATA / LOCALAPPDATA to its recipes, the Makefile sets
   them (`ISE_ENV`, exports; without LOCALAPPDATA the Python install manager behind `python` installs a Python
@@ -85,7 +86,7 @@ in the same change as the code they describe.
 - `rtl/hid/quad_mouse.v`: the USB mouse; full screen: Kempston mouse of the selected machine (a position per machine,
   ports `#FADF` / `#FBDF` / `#FFDF` in `pentagon`); quad view: a 16 x 16 cursor (`video_out`), a left press selects the
   quadrant's machine, a double click (20 vsyncs) makes it full screen; the middle button in the full screen goes back
-  to the quad view (OSD Mouse middle, soft switch 22); hidden after 244 VGA vsyncs without a report.
+  to the quad view (always: the OSD item Mouse middle was removed, soft switch 22 unused); hidden after 244 VGA vsyncs without a report.
   `src/sim/run_mouse.sh`.
 - TurboSound (AY only, no YM): each `pentagon` keeps the 32 registers of its two AY (distributed RAM, ports
   `#FFFD` / `#BFFD`, chip select by writing `FF` / `FE` to `#FFFD`); only two generators `rtl/sound/ay_psg.v` in the top,
@@ -94,11 +95,18 @@ in the same change as the code they describe.
 - OSD hotkeys are matched by the MCU firmware in the order of `core.json` "osd", and an item without a modifier matches
   with any modifier held: an item with a modifier must come before the one with the same key without it ("Reset All"
   Menu+F12 above "Reset" F12).
-- TR-DOS / Beta Disk (Go only, `ENABLE_FDC` of the top; 0 on Mini / Mini G: not built): one `hrdy_fdc` (VG93 model
+- TR-DOS / Beta Disk (Go only, `ENABLE_FDC` of `quadspeccy`; 0 on Mini / Mini G: not built): one `hrdy_fdc` (VG93 model
   `rtl/vg93/` copied from karabas-go-core-tsconf, on clk_bus) on the bus of the machine of OSD FDD (soft switch 23) if
   its DivMMC is off; `pentagon` `dos` as Pentagon (3Dxx with ROM 48, off on a fetch from RAM), ROM 2 = TR-DOS,
   ports #1F/#3F/#5F/#7F, #FF in TR-DOS. Drive pins active high as the tsconf Go core. `run_sim.sh` with `TRDOS=1`.
-- `karabas_go_top.v`: `NUM_MACHINES` (1 now), ROM loader FIFO (MCU address bits 17..16 = machine, 15..0 = offset in
+- Boards: the whole core is `rtl/quadspeccy.v` (parameters `NUM_MACHINES`, `ENABLE_FDC`, `MCU_BURST_MAX_MHZ`; outputs
+  `clk_bus`, so the net of the ucf has that name in the top, `clk_8`, video with `de`, `audio_l/r`); the board tops
+  `karabas_{go,mini,minig}_top.v` put it on the pins (as `kg_osca_system` of karabas_go_v6z80p). Pins of the Mini /
+  Mini G ucf from karabas-go-core-tsconf, the timing block the same in the three. Go: VGA + PCM5102 + FDC. Mini:
+  HDMI (`rtl/video/hdmi_out.v`: pixel clock = clk_bus, `kg_dcm` x5, `hdmi_tx` INPUT_REG 1, 48 kHz), sigma-delta,
+  FT_CLK_OUT 8 MHz (the FT812 needs it). Mini G: PCM5102, MCU_SCK IBUFG + BUFG (burst 32 MHz), FT_SPI_SCK from
+  before the BUFG. OSD "FDD" has `"boards": ["go"]`.
+- `quadspeccy.v`: `NUM_MACHINES` (4), ROM loader FIFO (MCU address bits 17..16 = machine, 15..0 = offset in
   the ROM area at 0x20000 of its bank), soft switches in the order of `core.json` "osd".
 - `rtl/tv80`: the CPU, tv80 of karabas_go_v6z80p (with its X / Y flag fixes of CPI / CPD). One for the four machines:
   `tv80_quad.v` around `tv80q_core.v`, which `tools/mkquad.py` GENERATES from `tv80_core.v` (every register a memory of

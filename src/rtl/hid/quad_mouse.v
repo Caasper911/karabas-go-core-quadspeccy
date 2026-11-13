@@ -15,7 +15,7 @@
    hides after 5 seconds without a report (cur_on: 244 vertical syncs of the VGA), any report shows it again.
    A second press of the left button in the same quadrant within 20 vertical syncs (0.4 s) of the first: the machine
    full screen (full_set).
- - mid_quad (OSD Mouse middle = Quad view): a press of the middle button in the full screen goes back to the quad view
+ - mid_quad (1 in the top; the OSD item Mouse middle was removed): a press of the middle button in the full screen goes back to the quad view
    (quad_set) and the machines do not see the middle button; else it is a button of the Kempston mouse.
 */
 

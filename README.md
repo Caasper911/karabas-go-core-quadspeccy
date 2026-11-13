@@ -1,4 +1,4 @@
-# Quad Speccy для Karabas Go
+# Quad Speccy для Karabas Go / Mini / Mini G
 
 FPGA-ядро для [Karabas Go](https://github.com/andykarpov/karabas-go): четыре независимых
 Pentagon 128 работают параллельно на одной плате. Можно смотреть все четыре на одном экране или
@@ -23,11 +23,13 @@ Pentagon 128 работают параллельно на одной плате.
 - Z-Controller в каждой машине (порты `#57` / `#77`, всегда включён, и при выключенном DivMMC): та же SD-карта
   или образ, что у DivMMC этой машины
 - VGA 31,25 кГц / 48,8 Гц (scan doubler), видимая часть 736 × 576, гашение как у 720 × 576p50; OSD-меню (Win+Esc)
+- платы: Karabas Go (VGA, PCM5102, дисковод), Karabas Mini и Mini G (HDMI с тем же растром и звуком, аналоговый
+  выход у Mini / PCM5102 у Mini G, без дисковода); Mini и Mini G пока не проверены на плате
 - USB-клавиатура и два джойстика через MCU; в OSD «Keys to» Selected / All (All: в quad-режиме нажатия идут во
   все машины сразу, в полноэкранном — в выбранную)
 - USB-мышь: Kempston mouse выбранной машины в полноэкранном режиме; в quad-режиме курсор, щелчок левой кнопкой
   выбирает машину, двойной щелчок — она на весь экран (курсор гаснет через 5 с без движения); средняя кнопка
-  возвращает в quad-режим (OSD «Mouse middle»: Quad view / Machine)
+  в полноэкранном режиме возвращает в quad-режим
 - beeper, вход / выход магнитофона; в OSD «Tape in» Board / Core (Core: остальные машины слышат выход машины
   «Tape out», SAVE в одной — LOAD в других) и «Tape out» Core 1..4 (какая машина идёт на выход платы)
 - TurboSound в каждой машине (два AY, порты `#FFFD` / `#BFFD`), слышна выбранная машина; смесь ABC / ACB
@@ -60,12 +62,13 @@ Pentagon 128 работают параллельно на одной плате.
 ```sh
 git clone --recursive <repo>      # или git submodule update --init
 cd src
-make go          # synthesis, implementation, bitstream, quadspeccy.kg
+make             # все платы: quadspeccy.kg с прошивками Go, Mini, Mini G
+make go          # одна плата (go / mini / minig): синтез, implementation, bitstream, её часть quadspeccy.kg
 make go-xst      # только синтез
 make go-report   # ресурсы и тайминг последней сборки
 ```
 
-Весь вывод ISE во время сборки пишется ещё и в `src/karabas_go_build.log`: прогресс виден через
+Весь вывод ISE во время сборки пишется ещё и в `src/karabas_<плата>_build.log`: прогресс виден через
 `tail -f src/karabas_go_build.log`.
 
 Пути к ISE: Linux `/opt/Xilinx/14.7/ISE_DS` (`ISE_SETTINGS=`), Windows `/c/Xilinx/14.7/ISE_DS`
@@ -80,7 +83,8 @@ make go-report   # ресурсы и тайминг последней сбор�
   клавиатура
 - [docs/PLAN.md](docs/PLAN.md): этапы и открытые вопросы
 - `modules/`: общие модули Karabas Go (сабмодуль karabas-go-modules)
-- `src/rtl/`: ядро (`karabas_go_top.v`, `zx/`, `sdram/`, `video/`, `hid/`, `t80/`)
+- `src/rtl/`: ядро `quadspeccy.v` и обёртки плат (`karabas_go_top.v`, `karabas_mini_top.v`, `karabas_minig_top.v`),
+  `zx/`, `sdram/`, `video/`, `hid/`, `tv80/`
 
 ## ROM
 

@@ -1,7 +1,7 @@
 # Command line build of the Quad Speccy core (ISE 14.7), after karabas-go-core-tsconf/src/Makefile.
 #
-#   make                 all the boards (quadspeccy.kg); now: Karabas Go only
-#   make go              one board: synthesis, implementation, bitstream, .kg file
+#   make                 all the boards (quadspeccy.kg): Karabas Go, Mini, Mini G
+#   make go|mini|minig   one board: synthesis, implementation, bitstream, its part of quadspeccy.kg
 #   make go-xst          one step: <board>-xst (.ngc), <board>-impl (.bin), <board>-core (.kg)
 #   make go-report       LUTs, slices, block RAMs and the timing result of the last build
 #   tail -f karabas_go_build.log   the progress of a build: every ISE step writes there too (the synthesis
@@ -15,7 +15,7 @@
 # $(XILINX_DIR) and the 32-bit bitgen (the nt64 one fails on Windows 10).
 
 PART = xc6slx25-ftg256-2
-BOARDS = go
+BOARDS = go mini minig
 
 SHELL = /bin/bash
 .SHELLFLAGS = -e -o pipefail -c
@@ -54,6 +54,8 @@ KG = quadspeccy.kg
 JSON = core.json
 
 MAP_T_go = 2
+MAP_T_mini = 2
+MAP_T_minig = 2
 # map single-threaded (-mt off): with -mt 2 map crashed now and then in its Global Placement without a message (four
 # times in a day, then on every run of one netlist; the same netlist went through with -mt off)
 MAP_OPT = -logic_opt off -ol high -xe n -xt 0 -register_duplication off -r 4 -global_opt off -mt off -detail -ir off -pr b -lc off -power off
