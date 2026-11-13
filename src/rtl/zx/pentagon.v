@@ -10,11 +10,17 @@
  zx_timing, shared by all the machines (docs/ARCHITECTURE.md).
 
  Memory (byte address in the bank of the machine):
-   0x00000..0x1FFFF  RAM pages 0..7
+   0x00000..0x1FFFF  RAM pages 0..7 (page p < 8 at p * 16 KB)
    0x20000..0x2FFFF  ROM area, 16 KB per ROM: 0 = 128 editor, 1 = 48 BASIC (#7FFD bit 4),
                      2 reserved (TR-DOS), 3 the ESXDOS ROM of the DivMMC (8 KB); filled by the ROM
                      loader of the top
    0x80000..0xFFFFF  DivMMC RAM, 64 banks of 8 KB
+   0x120000..0x1FFFFF RAM pages 8..63 (page p at 0x100000 + p * 16 KB)
+
+ 1024 KB RAM as Profi (karabas-go-core-profi, mem1024: OSD Memory size 1024K): port #DFFD (full address) 2..0 the bits 5..3 of the page in C000 (with
+ #7FFD 2..0: 64 pages of 16 KB); its other bits (SCO, WOROM, CPM, SCR, DS80 of Profi) are ignored. Cleared by a reset.
+ The AY ports take A13 = 1 (#FFFD / #BFFD) so that #DFFD is not one of them. With 128K (mem1024 0) #DFFD is not
+ decoded, its page bits count as 0 and the AY ports are those of Pentagon (A15 = 1, A1 = 0).
 
  DivMMC (divmmc_en): ports #E3 (7 CONMEM, 6 MAPRAM, 5..0 the RAM bank at 2000), #E7 (bit 0 the card
  select), #EB (SPI: a write sends the byte, a read gives the byte of the exchange before and sends
@@ -75,6 +81,7 @@ module pentagon #(
 	output reg mic = 1'b0,
 	input wire nmi,               // NMI while high
 	input wire areset,            // power on (the start of the core): clears the DivMMC, a reset does not
+	input wire mem1024,           // 1024 KB (Profi, #DFFD); 0: 128 KB, #DFFD not decoded, the AY ports as Pentagon
 
 	// TR-DOS and the Beta Disk (the controller hrdy_fdc in the top): this machine has them (OSD FDD, DivMMC off)
 	input wire trdos_en,
@@ -258,8 +265,16 @@ wire io_wr = ~m1_cycle & cpu_iorq & cpu_write;
 // ports
 
 reg [5:0] p7ffd = 6'd0;   // 2..0 RAM page at C000, 3 screen, 4 ROM, 5 lock
+reg [2:0] pdffd = 3'd0;   // Profi 1024: #DFFD 2..0, the page bits 5..3
 reg [2:0] border = 3'd0;
 wire lock = p7ffd[5];
+wire [5:0] page = {mem1024 ? pdffd : 3'd0, p7ffd[2:0]};
+// RAM page p, offset a: pages 0..7 at p * 16 KB, 8..63 at 0x100000 + p * 16 KB
+function [22:0] ram_addr;
+	input [5:0] p;
+	input [13:0] a;
+	ram_addr = {2'b00, |p[5:3], p, a};
+endfunction
 
 // DivMMC registers
 reg dv_conmem = 1'b0, dv_mapram = 1'b0;
@@ -291,9 +306,9 @@ always @* begin
 		map_addr = {4'b0001, dv_bank, cpu_a[12:0]};
 	end else case (cpu_a[15:14])
 		2'd0: begin map_ro = 1'b1; map_addr = {5'd0, 2'b10, dos_rom ? 2'b10 : {1'b0, p7ffd[4]}, cpu_a[13:0]}; end   // ROM 0 / 1 / TR-DOS
-		2'd1: map_addr = {6'd0, 3'd5, cpu_a[13:0]};
-		2'd2: map_addr = {6'd0, 3'd2, cpu_a[13:0]};
-		default: map_addr = {6'd0, p7ffd[2:0], cpu_a[13:0]};
+		2'd1: map_addr = ram_addr(6'd5, cpu_a[13:0]);
+		2'd2: map_addr = ram_addr(6'd2, cpu_a[13:0]);
+		default: map_addr = ram_addr(page, cpu_a[13:0]);
 	endcase
 end
 wire is_rom = map_ro;
@@ -323,7 +338,7 @@ reg [7:0] eb_q = 8'hFF;     // what this IN of #EB gives: spi_in when it started
 // (FF the first, FE the second); #BFFD (A14 = 0) data. The registers of the two chips are kept here (32 x 8 of
 // distributed RAM, the bits the AY has): the reads of #FFFD come from them, the generators (ay_psg, only for the
 // selected machine, in the top) get the writes and are loaded from them when the machine becomes selected.
-wire ay_port = cpu_a[15] & ~cpu_a[1];
+wire ay_port = cpu_a[15] & (cpu_a[13] | ~mem1024) & ~cpu_a[1];   // A13 with 1024K: not #DFFD
 reg ay_chip = 1'b0;
 reg [3:0] ay_reg = 4'd0;
 reg ay_rv = 1'b1;             // the register select had 0 in bits 7..4 (else the chip is not addressed)
@@ -372,6 +387,7 @@ always @(posedge clk) begin
 		rd_cycle <= 1'b0;
 		wr_done <= 1'b0;
 		p7ffd <= 6'd0;
+		pdffd <= 3'd0;
 		// port #FE (border, MIC, beeper) is kept over a reset, as the ULA: the border stays until the ROM sets it
 		late <= 1'b0;
 		nz <= 1'b0;
@@ -420,6 +436,8 @@ always @(posedge clk) begin
 					end
 					if (!cpu_a[15] && !cpu_a[1] && !lock)
 						p7ffd <= cpu_do[5:0];
+					if (mem1024 && cpu_a == 16'hDFFD)
+						pdffd <= cpu_do[2:0];
 				end
 			end
 			if (cpu_ts == 3'd3)

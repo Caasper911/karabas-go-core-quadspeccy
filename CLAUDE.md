@@ -49,6 +49,8 @@ in the same change as the code they describe.
   ports and keeps the answers in RAM, the testbench prints them (2 frames are enough; with `ZC=1` through the
   Z-Controller ports #57 / #77). ESXDOS itself reaches the card
   only after ~23 frames (it clears 5 RAM banks first).
+  `MEMTEST=1`: `src/sim/memtest.asm` as ROM 0 (DivMMC off) checks the 1024 KB of Profi (64 page markers, #DFFD
+  bits 7..3 written as 1). The SDRAM model has 2 MB per bank (`BOFS = BANK << 20`).
   `TESTROM=<name>` assembles `src/sim/<name>.asm` into that place (`im2test`: IM 2 with a vector table, the
   testbench counts the interrupts its handler saw). The testbench compares every byte the CPU takes (`cpu_di`) with
   the model.
@@ -74,6 +76,9 @@ in the same change as the code they describe.
   centred (offsets 96 / 68). Quad view: quadrants 368 x 288, a VGA-timed line fetch per machine into `qbuf` (block
   RAM, read one clock after `q_addr`, as `brd_mem`), not a frame buffer; `src/sim/run_vpx.sh` checks every pixel.
   (Scale 4/3 at 21 MHz was tried, branch `quad-scale` history: looked bad, removed.)
+- 1024 KB RAM as Profi in every `pentagon` (OSD Memory size 128K / 1024K per machine, soft switch 24 + n, `mem1024`;
+  128K: #DFFD not decoded, AY ports as Pentagon): #DFFD (full address) 2..0 = page bits 5..3 of C000, the other bits
+  ignored; pages 0..7 at p * 16 KB, 8..63 at 0x100000 + p * 16 KB of the bank; the AY ports need A13 = 1.
 - Z-Controller in every `pentagon` (always on): #57 = the SPI data as #EB of the DivMMC, #77 bit 1 the card select
   (#E7 bit 0 for the DivMMC), read #77 = FC; the same SPI master and card (OSD SD card works with the DivMMC off).
 - `rtl/hid/zx_kbd.v`: HID report to the ZX matrix, Win+1..4 / Win+` hotkeys (and `sel_we` from the mouse).

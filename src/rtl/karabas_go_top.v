@@ -313,9 +313,9 @@ assign FT_OE_N = mcu_ft_vga_on ? 1'b0 : 1'b1;
 // ---------------------------------------------------------------------------------------------
 // soft switches
 
-// 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image)
-wire [24*8-1:0] softsw;
-kg_soft_switches #(.N(24), .INIT(192'h00_00_00_00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
+// 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image); 24 + n Memory size
+wire [28*8-1:0] softsw;
+kg_soft_switches #(.N(28), .INIT(224'h00_00_00_00_00_00_00_00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
 	.clk(clk_bus),
 	.command(softsw_command),
 	.regs(softsw),
@@ -336,6 +336,8 @@ wire sw_tape_all = softsw[19*8];          // Tape in: 0 Board (all machines hear
 wire [1:0] sw_tape_core = softsw[20*8 +: 2];   // Tape out: the machine on TAPE_OUT (Core 1..4)
 wire sw_keys_all = softsw[21*8];          // Keys to: 0 Selected, 1 All (the quad view only)
 wire [1:0] sw_fdd_core = softsw[23*8 +: 2];    // FDD: the machine with TR-DOS and the floppy drive (Core 1..4)
+// Memory size of machine n (24 + n): 0 128K, 1 1024K (Profi, #DFFD)
+wire [3:0] sw_mem1024 = {softsw[27*8], softsw[26*8], softsw[25*8], softsw[24*8]};
 wire sw_mid_machine = softsw[22*8];       // Mouse middle: 0 Quad view (back to the quad view), 1 Machine (Kempston)
 
 // ---------------------------------------------------------------------------------------------
@@ -734,6 +736,7 @@ generate
 				.nmi(sw_nmi && sel == gi),
 				// power on for the DivMMC (a reset keeps its state): the start of the core and the ROM loading
 				.areset(areset | ld_hold),
+				.mem1024(sw_mem1024[gi]),
 				.trdos_en(m_trdos_en[gi]),
 				.fdc_cs(m_fdc_cs[gi]),
 				.fdc_csff(m_fdc_csff[gi]),

@@ -31,6 +31,8 @@ if [ -n "${TESTROM:-}" ]; then sjasmplus --nologo $TESTROM.asm > /dev/null && ES
 # TRDOS=1: trtest.asm as ROM 0 and ROM 2 (the TR-DOS slot), the machine with TR-DOS (DivMMC off)
 ROM0=../roms/128.rom ROM2=work/ff16k.bin
 if [ "${TRDOS:-0}" = 1 ]; then sjasmplus --nologo trtest.asm > /dev/null && ROM0=work/trtest0.bin ROM2=work/trtest2.bin; fi
+# MEMTEST=1: memtest.asm as ROM 0 (the 1024 KB of Profi, port #DFFD), DivMMC off
+if [ "${MEMTEST:-0}" = 1 ]; then sjasmplus --nologo memtest.asm > /dev/null && ROM0=work/memtest.bin; fi
 $PY ../../tools/rom2hex.py $ROM0 ../roms/48.rom $ROM2 $ESX work/roms.hex
 
 cat > work/tb.prj <<PRJ
@@ -75,7 +77,7 @@ PRJ
 
 cd work
 fuse -intstyle silent -incremental -lib unisims_ver -prj tb.prj -o $EXE -timeprecision_vhdl 1ps \
-	-d FRAMES=$FRAMES -d RESET_AT=${RESET_AT:-0} -d SDEMU=${SDEMU:-0} -d SDTEST=${SDTEST:-0} -d BANK=${BANK:-0} -d QUAD=${QUAD:-0} -d TRDOS=${TRDOS:-0} -d CUSTOM_ROM=$([ "$ESX" = ../roms/esxdos089.bin ] && [ "${TRDOS:-0}" = 0 ] && echo 0 || echo 1) work.tb_pentagon work.glbl > fuse.log 2>&1 || { tail -30 fuse.log; exit 1; }
+	-d FRAMES=$FRAMES -d RESET_AT=${RESET_AT:-0} -d SDEMU=${SDEMU:-0} -d SDTEST=${SDTEST:-0} -d BANK=${BANK:-0} -d QUAD=${QUAD:-0} -d TRDOS=${TRDOS:-0} -d MEMTEST=${MEMTEST:-0} -d CUSTOM_ROM=$([ "$ESX" = ../roms/esxdos089.bin ] && [ "${TRDOS:-0}" = 0 ] && [ "${MEMTEST:-0}" = 0 ] && echo 0 || echo 1) work.tb_pentagon work.glbl > fuse.log 2>&1 || { tail -30 fuse.log; exit 1; }
 echo "run all" > run.tcl
 echo "quit" >> run.tcl
 $EXE -intstyle silent -tclbatch run.tcl -testplusarg FRAMES=$FRAMES | tee sim.log | grep -vE "^(ISim|This is a|Time resolution|Simulator is doing|Finished circuit|WARNING: A WEBPACK)" || true

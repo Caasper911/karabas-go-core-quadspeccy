@@ -23,13 +23,16 @@ parameter FRAMES = `FRAMES;
 `define BANK 0
 `endif
 parameter BANK = `BANK;
-localparam [31:0] BOFS = BANK << 19;   // word index of the bank in the model: {bank, row[9:0], column}
+localparam [31:0] BOFS = BANK << 20;   // word index of the bank in the model: {bank, row[10:0], column} (2 MB a bank)
 `ifndef TRDOS
 `define TRDOS 0
 `endif
 // TRDOS = 1 (run_sim.sh): trtest.asm, the machine with TR-DOS, no DivMMC; the controller answers 5A
+`ifndef MEMTEST
+`define MEMTEST 0
+`endif
 `ifndef DIVMMC
-`define DIVMMC (`TRDOS ? 0 : 1)
+`define DIVMMC ((`TRDOS || `MEMTEST) ? 0 : 1)
 `endif
 parameter DIVMMC = `DIVMMC;
 `ifndef SDEMU
@@ -88,7 +91,7 @@ sdram_ctrl #(.INIT_WAIT(16'd200)) sdram(
 	.SDR_RAS_N(sdr_ras_n), .SDR_CAS_N(sdr_cas_n), .SDR_WE_N(sdr_we_n), .SDR_DQ(sdr_dq)
 );
 
-sdram_model #(.ROWS(1024), .RB(10)) chip(
+sdram_model #(.ROWS(2048), .RB(11)) chip(
 	.clk(sdr_clk), .ba(sdr_ba), .a(sdr_a), .dqm(sdr_dqm),
 	.ras_n(sdr_ras_n), .cas_n(sdr_cas_n), .we_n(sdr_we_n), .dq(sdr_dq)
 );
@@ -237,7 +240,7 @@ endgenerate
 pentagon #(.CPU(`QUAD ? 2 : 1)) m(
 	.clk(clk_bus), .reset(reset), .pause(1'b0),
 	.ce7(ce7), .ce_cpu(`QUAD ? (cslot == 3'd0) : ce_cpu), .hc(hc), .vc(vc), .int_n(int_n), .frame(frame),
-	.keys(40'd0), .kempston(8'd0), .tape_in(1'b0), .beeper(beeper), .mic(mic), .nmi(1'b0), .areset(~ready),
+	.keys(40'd0), .kempston(8'd0), .tape_in(1'b0), .beeper(beeper), .mic(mic), .nmi(1'b0), .areset(~ready), .mem1024(`MEMTEST != 0),
 	.trdos_en(`TRDOS != 0), .fdc_cs(fdc_cs), .fdc_csff(fdc_csff), .fdc_rd(fdc_rd), .fdc_wr(fdc_wr),
 	.fdc_q(fdc_q), .fdc_busy(fdc_busy),
 	.divmmc_en(DIVMMC != 0), .spi_sck(spi_sck), .spi_mosi(spi_mosi), .spi_cs_n(spi_cs_n),
@@ -419,6 +422,14 @@ always @(posedge clk_bus) begin
 			$display("intack: %0d T2 clocks, %0d not FF; interrupts counted by the handler: %0d", intacks, intack_bad,
 				{chip.mem[BOFS + (('h08000 + 'h1000) >> 1)]});
 			errors = errors + intack_bad;
+			if (`MEMTEST) begin : memtest_check
+				reg [7:0] t0, t1;
+				t0 = chip.mem[BOFS + ('h9000 >> 1)][7:0];
+				t1 = chip.mem[BOFS + ('h9000 >> 1)][15:8];
+				$display("memtest: bad pages %0d (0), end %h (77)", t0, t1);
+				if (t0 != 0 || t1 != 8'h77)
+					errors = errors + 1;
+			end
 			if (`TRDOS) begin : trdos_check
 				reg [7:0] t [0:4];
 				reg [7:0] t5, t6, t7;

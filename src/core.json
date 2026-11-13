@@ -16,7 +16,7 @@
             "address": 16384
         },
         {
-            "filename": "roms/trdos504t.rom",
+            "filename": "roms/trdos504tprofiD.rom",
             "address": 32768
         },
         {
@@ -32,7 +32,7 @@
             "address": 81920
         },
         {
-            "filename": "roms/trdos504t.rom",
+            "filename": "roms/trdos504tprofiD.rom",
             "address": 98304
         },
         {
@@ -48,7 +48,7 @@
             "address": 147456
         },
         {
-            "filename": "roms/trdos504t.rom",
+            "filename": "roms/trdos504tprofiD.rom",
             "address": 163840
         },
         {
@@ -64,7 +64,7 @@
             "address": 212992
         },
         {
-            "filename": "roms/trdos504t.rom",
+            "filename": "roms/trdos504tprofiD.rom",
             "address": 229376
         },
         {
@@ -74,7 +74,7 @@
     ],
     "boards": {
         "go": {
-            "build": "26111601",
+            "build": "26111605",
             "bitstream": "karabas_go.bin"
         }
     },
@@ -235,6 +235,18 @@
             "hotkey": "F12"
         },
         {
+            "index": 24,
+            "key": "mem1",
+            "type": "S",
+            "name": "Memory size",
+            "options": [
+                "128K",
+                "1024K"
+            ],
+            "default": 0,
+            "page": 1
+        },
+        {
             "index": 15,
             "key": "aymix1",
             "type": "S",
@@ -288,6 +300,18 @@
                 "item": "sd1",
                 "value": "Image"
             }
+        },
+        {
+            "index": 25,
+            "key": "mem2",
+            "type": "S",
+            "name": "Memory size",
+            "options": [
+                "128K",
+                "1024K"
+            ],
+            "default": 0,
+            "page": 2
         },
         {
             "index": 16,
@@ -345,6 +369,18 @@
             }
         },
         {
+            "index": 26,
+            "key": "mem3",
+            "type": "S",
+            "name": "Memory size",
+            "options": [
+                "128K",
+                "1024K"
+            ],
+            "default": 0,
+            "page": 3
+        },
+        {
             "index": 17,
             "key": "aymix3",
             "type": "S",
@@ -398,6 +434,18 @@
                 "item": "sd3",
                 "value": "image"
             }
+        },
+        {
+            "index": 27,
+            "key": "mem4",
+            "type": "S",
+            "name": "Memory size",
+            "options": [
+                "128K",
+                "1024K"
+            ],
+            "default": 0,
+            "page": 4
         },
         {
             "index": 18,
