@@ -237,6 +237,9 @@ generate
 	end
 endgenerate
 
+wire ay_we;
+wire [4:0] ay_wa;
+wire [7:0] ay_wd;
 pentagon #(.CPU(`QUAD ? 2 : 1)) m(
 	.clk(clk_bus), .reset(reset), .pause(1'b0),
 	.ce7(ce7), .ce_cpu(`QUAD ? (cslot == 3'd0) : ce_cpu), .hc(hc), .vc(vc), .int_n(int_n), .frame(frame),
@@ -252,8 +255,14 @@ pentagon #(.CPU(`QUAD ? 2 : 1)) m(
 	.x_a(x_a), .x_do(x_do), .x_mc(x_mc), .x_ts(x_ts), .x_iorq(x_iorq), .x_noread(x_noread), .x_write(x_write),
 	.x_intcycle_n(x_intcycle_n), .x_cen(x_cen), .x_wait_n(x_wait_n), .x_reset_n(x_reset_n), .x_nmi_n(x_nmi_n),
 	.x_dinst(x_dinst), .x_di(x_di),
-	.late(late), .nz()
+	.late(late), .nz(),
+	.ay_we(ay_we), .ay_wa(ay_wa), .ay_wd(ay_wd), .ay_ra(5'd0), .ay_rd()
 );
+
+// the AY register writes of the machine (after the clearing at the reset)
+always @(posedge clk_bus)
+	if (ay_we && !reset && ay_wd != 8'd0)
+		$display("ay write: chip %0d R%0d = %02h", ay_wa[4], ay_wa[3:0], ay_wd);
 
 // the emulated SD card (SDEMU = 1) as in the top, with a model of img_sdc: an image of 64 MB is mounted after the
 // reset; a sector request ends after SD_DELAY clocks, a read gives the bytes lba[7:0] ^ index[7:0]
@@ -457,6 +466,7 @@ always @(posedge clk_bus) begin
 			$write("read margin (clk_bus clocks from the answer to the CPU clock): min %0d; histogram", margin_min);
 			for (mh = 0; mh <= 20; mh = mh + 1) $write(" %0d", margin_hist[mh]);
 			$write("%c", 8'd10);
+			$display("9000 / 9001 (AY R8 read back from chip 0 / 1): %02h %02h", chip.mem[BOFS + ('h9000 >> 1)][7:0], chip.mem[BOFS + ('h9000 >> 1)][15:8]);
 			$display("tb_pentagon: %0d errors", errors);
 			$finish;
 		end

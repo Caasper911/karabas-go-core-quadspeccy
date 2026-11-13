@@ -74,15 +74,15 @@
     ],
     "boards": {
         "go": {
-            "build": "26111719",
+            "build": "26111720",
             "bitstream": "karabas_go.bin"
         },
         "mini": {
-            "build": "26111719",
+            "build": "26111720",
             "bitstream": "karabas_mini.bin"
         },
         "minig": {
-            "build": "26111719",
+            "build": "26111720",
             "bitstream": "karabas_minig.bin"
         }
     },
@@ -248,6 +248,18 @@
             "page": 1
         },
         {
+            "index": 28,
+            "key": "snd1",
+            "type": "S",
+            "name": "Sound",
+            "options": [
+                "Selected",
+                "Always"
+            ],
+            "default": 0,
+            "page": 1
+        },
+        {
             "index": 15,
             "key": "aymix1",
             "type": "S",
@@ -310,6 +322,18 @@
             "options": [
                 "128K",
                 "1024K"
+            ],
+            "default": 0,
+            "page": 2
+        },
+        {
+            "index": 29,
+            "key": "snd2",
+            "type": "S",
+            "name": "Sound",
+            "options": [
+                "Selected",
+                "Always"
             ],
             "default": 0,
             "page": 2
@@ -382,6 +406,18 @@
             "page": 3
         },
         {
+            "index": 30,
+            "key": "snd3",
+            "type": "S",
+            "name": "Sound",
+            "options": [
+                "Selected",
+                "Always"
+            ],
+            "default": 0,
+            "page": 3
+        },
+        {
             "index": 17,
             "key": "aymix3",
             "type": "S",
@@ -444,6 +480,18 @@
             "options": [
                 "128K",
                 "1024K"
+            ],
+            "default": 0,
+            "page": 4
+        },
+        {
+            "index": 31,
+            "key": "snd4",
+            "type": "S",
+            "name": "Sound",
+            "options": [
+                "Selected",
+                "Always"
             ],
             "default": 0,
             "page": 4

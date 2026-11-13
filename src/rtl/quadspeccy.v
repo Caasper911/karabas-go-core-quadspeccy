@@ -253,8 +253,8 @@ kg_mcu #(
 // soft switches
 
 // 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image); 24 + n Memory size
-wire [28*8-1:0] softsw;
-kg_soft_switches #(.N(28), .INIT(224'h00_00_00_00_00_00_00_00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
+wire [32*8-1:0] softsw;
+kg_soft_switches #(.N(32), .INIT(256'h00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
 	.clk(clk_bus),
 	.command(softsw_command),
 	.regs(softsw),
@@ -277,6 +277,8 @@ wire sw_keys_all = softsw[21*8];          // Keys to: 0 Selected, 1 All (the qua
 wire [1:0] sw_fdd_core = softsw[23*8 +: 2];    // FDD: the machine with TR-DOS and the floppy drive (Core 1..4)
 // Memory size of machine n (24 + n): 0 128K, 1 1024K (Profi, #DFFD)
 wire [3:0] sw_mem1024 = {softsw[27*8], softsw[26*8], softsw[25*8], softsw[24*8]};
+// Sound of machine n (28 + n): 0 only when it is selected, 1 always
+wire [3:0] sw_snd_all = {softsw[31*8], softsw[30*8], softsw[29*8], softsw[28*8]};
 // 22: not used (was Mouse middle; the middle button always goes back to the quad view)
 
 // ---------------------------------------------------------------------------------------------
@@ -911,55 +913,42 @@ assign video_de = vo_de;
 // ---------------------------------------------------------------------------------------------
 // sound: the beeper, MIC, tape input and TurboSound of the selected machine
 
-// TurboSound: two AY generators for the selected machine only. They get its register writes; when another machine
-// becomes selected (and at the start) they are loaded with its 32 register copies (ay_ra, one a clock; a write of
-// the machine goes first). The other machines keep their registers and are silent.
-reg [1:0] ay_sel = 2'd0;
-reg [5:0] ay_ld = 6'd32;
-wire s_ay_we = m_ay_we[sel];
-reg g_we = 1'b0;
-reg [4:0] g_wa = 5'd0;
-reg [7:0] g_wd = 8'd0;
-assign ay_ra = ay_ld[4:0] - 1'd1;
-always @(posedge clk_bus) begin
-	g_we <= 1'b0;
-	if (ay_sel != sel) begin
-		ay_sel <= sel;
-		ay_ld <= 6'd32;
-	end else if (s_ay_we) begin
-		g_we <= 1'b1;
-		g_wa <= m_ay_wa[sel*5 +: 5];
-		g_wd <= m_ay_wd[sel*8 +: 8];
-	end else if (ay_ld != 6'd0) begin
-		ay_ld <= ay_ld - 1'd1;
-		g_we <= 1'b1;
-		g_wa <= ay_ra;
-		g_wd <= m_ay_rd[sel*8 +: 8];
+// The machines heard: the selected one, and those with Sound = Always (OSD 28 + n)
+wire [3:0] aud;
+generate
+	for (gi = 0; gi < 4; gi = gi + 1) begin : g_aud
+		assign aud[gi] = (sel == gi) || sw_snd_all[gi];
 	end
-end
+endgenerate
 
-wire [7:0] ay0_a, ay0_b, ay0_c, ay1_a, ay1_b, ay1_c;
-ay_psg ay0(.clk(clk_bus), .we(g_we & ~g_wa[4]), .wa(g_wa[3:0]), .wd(g_wd), .ch_a(ay0_a), .ch_b(ay0_b), .ch_c(ay0_c));
-ay_psg ay1(.clk(clk_bus), .we(g_we & g_wa[4]), .wa(g_wa[3:0]), .wd(g_wd), .ch_a(ay1_a), .ch_b(ay1_b), .ch_c(ay1_c));
+// TurboSound of all machines: one generator for the eight AY (turbosound.v), the machines heard in the mix
+wire [12:0] ay_l, ay_r;
+turbosound ts(
+	.clk(clk_bus),
+	.aud(aud),
+	.acb(sw_acb),
+	.m_we(m_ay_we),
+	.m_wa(m_ay_wa),
+	.ay_ra(ay_ra),
+	.m_rd(m_ay_rd),
+	.ay_l(ay_l),
+	.ay_r(ay_r)
+);
 
-// ABC: left A + B / 2, right C + B / 2; ACB: left A + C / 2, right B + C / 2 (as 2A + B, 11 bits for the two chips)
-wire s_acb = sw_acb[sel];
-wire [9:0] l0 = {ay0_a, 1'b0} + (s_acb ? ay0_c : ay0_b);
-wire [9:0] r0 = {s_acb ? ay0_b : ay0_c, 1'b0} + (s_acb ? ay0_c : ay0_b);
-wire [9:0] l1 = {ay1_a, 1'b0} + (s_acb ? ay1_c : ay1_b);
-wire [9:0] r1 = {s_acb ? ay1_b : ay1_c, 1'b0} + (s_acb ? ay1_c : ay1_b);
-reg [10:0] ay_l = 11'd0, ay_r = 11'd0;
-always @(posedge clk_bus) begin
-	ay_l <= l0 + l1;
-	ay_r <= r0 + r1;
-end
-
+// beeper, MIC and tape input of the machines heard (0x2000, 0x800, 0x400 each), the AY x 8 (as one machine before);
+// the sum of several machines is limited to 0x7FFF
 wire s_beep = m_beeper[sel];
-wire s_mic = m_mic[sel];
-wire [15:0] beep = (s_beep ? 16'h2000 : 16'd0) + (s_mic ? 16'h0800 : 16'd0) + (m_tape_in[sel] ? 16'h0400 : 16'd0);
+reg [17:0] beeps = 18'd0;
+always @(posedge clk_bus)
+	beeps <= (aud[0] ? {m_beeper[0], 1'b0, m_mic[0], m_tape_in[0], 10'd0} : 14'd0)
+	       + (aud[1] ? {m_beeper[1], 1'b0, m_mic[1], m_tape_in[1], 10'd0} : 14'd0)
+	       + (aud[2] ? {m_beeper[2], 1'b0, m_mic[2], m_tape_in[2], 10'd0} : 14'd0)
+	       + (aud[3] ? {m_beeper[3], 1'b0, m_mic[3], m_tape_in[3], 10'd0} : 14'd0);
+wire [17:0] sum_l = beeps + {2'b00, ay_l, 3'b000};
+wire [17:0] sum_r = beeps + {2'b00, ay_r, 3'b000};
 always @(posedge clk_bus) begin
-	audio_l <= beep + {2'b00, ay_l, 3'b000};
-	audio_r <= beep + {2'b00, ay_r, 3'b000};
+	audio_l <= (sum_l > 18'h07FFF) ? 16'h7FFF : sum_l[15:0];
+	audio_r <= (sum_r > 18'h07FFF) ? 16'h7FFF : sum_r[15:0];
 end
 
 assign beeper = s_beep;

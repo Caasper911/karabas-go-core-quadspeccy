@@ -89,9 +89,14 @@ in the same change as the code they describe.
   to the quad view (always: the OSD item Mouse middle was removed, soft switch 22 unused); hidden after 244 VGA vsyncs without a report.
   `src/sim/run_mouse.sh`.
 - TurboSound (AY only, no YM): each `pentagon` keeps the 32 registers of its two AY (distributed RAM, ports
-  `#FFFD` / `#BFFD`, chip select by writing `FF` / `FE` to `#FFFD`); only two generators `rtl/sound/ay_psg.v` in the top,
-  for the selected machine, loaded from its copies when the selection changes. OSD AY mix ABC / ACB per machine
-  (soft switches 15..18). `src/sim/tb_ay.v` checks the generator (tone, envelope shapes).
+  `#FFFD` / `#BFFD`, chip select by writing `FF` / `FE` to `#FFFD`). One time-multiplexed generator for the eight AY
+  (`rtl/sound/turbosound.v`, the logic of `ay_psg.v`): a frame of 256 clocks, 32 per voice {machine, chip}; it reads
+  the registers from the copies of all machines at once (`ay_ra`, async distributed RAM), its state in distributed
+  RAM; a write of R13 restarts the envelope at the voice's next envelope step. Heard: the selected machine and those
+  with OSD Sound = Always (soft switches 28..31); AY mix ABC / ACB per machine (15..18); the sum limited to 0x7FFF.
+  `src/sim/run_ts.sh` (`tb_ts.v`: the mix, aud, ACB, tone and envelope against `ay_psg`; `NETLIST=1` the levels on the
+  XST netlist); `src/sim/tb_ay.v` checks `ay_psg` (the reference); `run_sim.sh TESTROM=tstest`: chip select and
+  writes / reads of both chips by a machine (the testbench prints the AY writes).
 - OSD hotkeys are matched by the MCU firmware in the order of `core.json` "osd", and an item without a modifier matches
   with any modifier held: an item with a modifier must come before the one with the same key without it ("Reset All"
   Menu+F12 above "Reset" F12).
