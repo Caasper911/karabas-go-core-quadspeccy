@@ -217,6 +217,12 @@ wire [23:0] img_q_di;
 assign MCU_SPI_IO[0] = mcu_burst_ready;
 assign MCU_SPI_IO[1] = 1'bZ;
 
+// the USB mouse of the MCU (quad_mouse)
+wire [7:0] ms_x, ms_y;
+wire [3:0] ms_z;
+wire [2:0] ms_b;
+wire ms_upd;
+
 kg_mcu #(
 	.BURST_MAX_MHZ(0),
 	.CS_FILTER(3),
@@ -242,7 +248,7 @@ kg_mcu #(
 	.MCU_BURST_CS_N(MCU_SPI_IO[1]),
 	.MCU_BURST_READY(mcu_burst_ready),
 
-	.MS_X(), .MS_Y(), .MS_Z(), .MS_B(), .MS_UPD(),
+	.MS_X(ms_x), .MS_Y(ms_y), .MS_Z(ms_z), .MS_B(ms_b), .MS_UPD(ms_upd),
 
 	.KB_STATUS(kb_status),
 	.KB_DAT0(kb_dat0),
@@ -342,6 +348,8 @@ wire [39:0] kbd_keys;
 wire [7:0] kbd_kempston;
 wire [1:0] kbd_sel;
 wire kbd_full_tgl;
+wire ms_sel_we;        // the mouse chose a machine in the quad view (quad_mouse)
+wire [1:0] ms_sel_in;
 
 zx_kbd kbd(
 	.clk(clk_bus),
@@ -359,6 +367,8 @@ zx_kbd kbd(
 	.joy_r(joy_r),
 	.keys(kbd_keys),
 	.kempston(kbd_kempston),
+	.sel_we(ms_sel_we),
+	.sel_in(ms_sel_in),
 	.sel(kbd_sel),
 	.full_tgl(kbd_full_tgl)
 );
@@ -501,6 +511,29 @@ zx_timing timing(
 	.vga_half(vga_half),
 	.vga_p(vga_p),
 	.vga_l(vga_l)
+);
+
+// mouse: the Kempston mouse of the selected machine in the full screen, the cursor of the quad view (quad_mouse.v)
+wire video_hs, video_vs;
+wire [4*24-1:0] ms_q;
+wire [9:0] cur_x, cur_y;
+wire cur_on;
+quad_mouse #(.NUM_MACHINES(NUM_MACHINES)) mouse(
+	.clk(clk_bus),
+	.ms_x(ms_x),
+	.ms_y(ms_y),
+	.ms_z(ms_z),
+	.ms_b(ms_b),
+	.ms_upd(ms_upd),
+	.full(full),
+	.sel(sel),
+	.vsync(video_vs),
+	.ms_q(ms_q),
+	.cur_x(cur_x),
+	.cur_y(cur_y),
+	.cur_on(cur_on),
+	.sel_we(ms_sel_we),
+	.sel_in(ms_sel_in)
 );
 
 // quad view: line requests from video_out, the line buffers and border memories of the machines
@@ -650,6 +683,7 @@ generate
 				.frame(r_frame[gi*5 +: 5]),
 				.keys(sel == gi ? kbd_keys : 40'd0),
 				.kempston(sel == gi ? kbd_kempston : 8'd0),
+				.mouse(ms_q[gi*24 +: 24]),
 				.tape_in(m_tape_in[gi]),
 				.nmi(sw_nmi && sel == gi),
 				// power on for the DivMMC (a reset keeps its state): the start of the core and the ROM loading
@@ -767,7 +801,6 @@ endgenerate
 // video
 
 wire [7:0] video_r, video_g, video_b, osd_r, osd_g, osd_b;
-wire video_hs, video_vs;
 
 video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.clk(clk_bus),
@@ -785,6 +818,9 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.full(full),
 	.sel(sel),
 	.rim_col(sw_frame_col),
+	.cur_x(cur_x),
+	.cur_y(cur_y),
+	.cur_on(cur_on),
 	.pix(m_pix[sel*4 +: 4]),
 	.q_go(q_go),
 	.q_vc(q_vc),

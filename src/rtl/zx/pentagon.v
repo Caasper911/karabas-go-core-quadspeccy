@@ -64,6 +64,7 @@ module pentagon #(
 	// input / output
 	input wire [39:0] keys,       // pressed keys: bit row * 5 + column, row n = A(8+n) low
 	input wire [7:0] kempston,
+	input wire [23:0] mouse,      // Kempston mouse: {buttons byte, y, x} (quad_mouse.v)
 	input wire tape_in,
 	output reg beeper = 1'b0,
 	output reg mic = 1'b0,
@@ -317,6 +318,9 @@ always @* begin
 		port_q = ay_rv ? ay_ram[{ay_chip, ay_reg}] : 8'hFF;
 	else if (cpu_a[7:0] == 8'h1F)
 		port_q = kempston;
+	else if (cpu_a[7:0] == 8'hDF)
+		// Kempston mouse: #FADF buttons (A8 = 0), #FBDF x, #FFDF y (A10)
+		port_q = !cpu_a[8] ? mouse[23:16] : cpu_a[10] ? mouse[15:8] : mouse[7:0];
 	else
 		port_q = 8'hFF;
 end

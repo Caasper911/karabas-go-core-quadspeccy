@@ -4,6 +4,7 @@
 //   words and border colours are a hash of machine and native line; every pixel of the picture (736 x 576, quadrants
 //   368 x 288: 56 + 256 + 56 pixels, 48 + 192 + 48 lines, frame of the selected machine, grey for a machine not
 //   built) against the expected one, black outside it;
+//   the mouse cursor (16 x 16 at 500, 300) over it;
 // - full screen (pix: one colour): 576 lines of 736 lit pixels from the same place;
 // - every line 896 clocks, the picture 80 clocks after the end of hsync (back porch).
 // Ends with "tb_vpx: N errors". Run: src/sim/run_vpx.sh
@@ -52,7 +53,7 @@ reg full = 1'b0;
 reg [1:0] sel = 2'd1;
 wire [7:0] r, g, b; wire hs, vs;
 video_out #(.NUM_MACHINES(3)) vo(.clk(clk), .ce7(ce7), .hc(hc), .vc(vc), .w_ce7(ce7), .w_hc(hc), .w_vc(vc),
-	.vga_x(vga_x), .vga_p(vga_p), .vga_l(vga_l), .flash(1'b0), .full(full), .sel(sel), .rim_col(3'd4), .pix(4'd5),
+	.vga_x(vga_x), .vga_p(vga_p), .vga_l(vga_l), .flash(1'b0), .full(full), .sel(sel), .rim_col(3'd4), .cur_x(10'd500), .cur_y(10'd300), .cur_on(1'b1), .pix(4'd5),
 	.q_go(q_go), .q_vc(q_vc), .q_buf(q_buf), .q_addr(q_addr), .q_words(q_words), .q_brd_addr(q_brd_addr),
 	.q_brds(q_brds), .diag_en(1'b0), .diag_ok(4'd0), .diag_blink(1'b0), .r(r), .g(g), .b(b), .hs(hs), .vs(vs));
 
@@ -64,13 +65,17 @@ endfunction
 function [23:0] expect_of(input integer x, input integer y);
 	integer yq, xq, vq, m, hq;
 	reg [15:0] w;
+	reg [31:0] cr;
 	begin
+		cr = vo.cursor_row(y - 300);
 		yq = (y >= 288) ? y - 288 : y;
 		xq = (x >= 368) ? x - 368 : x;
 		m = ((y >= 288) ? 2 : 0) + ((x >= 368) ? 1 : 0);
 		vq = (yq < 48) ? yq + 272 : yq - 48;
 		hq = xq - 56;
-		if (m == sel && (xq < 2 || xq >= 366 || yq < 2 || yq >= 286))
+		if (x >= 500 && x < 516 && y >= 300 && y < 316 && cr[16 + 15 - (x - 500)])
+			expect_of = cr[15 - (x - 500)] ? 24'hFFFFFF : 24'h000000;
+		else if (m == sel && (xq < 2 || xq >= 366 || yq < 2 || yq >= 286))
 			expect_of = 24'h00FF00;
 		else if (m >= 3)
 			expect_of = 24'h303030;

@@ -41,6 +41,8 @@ module zx_kbd (
 
 	output reg [39:0] keys = 40'd0,
 	output reg [7:0] kempston = 8'd0,
+	input wire sel_we,             // the machine chosen by the mouse in the quad view (quad_mouse)
+	input wire [1:0] sel_in,
 	output reg [1:0] sel = 2'd0,
 	output reg full_tgl = 1'b0
 );
@@ -250,6 +252,9 @@ always @(posedge clk) begin
 		hk_num <= hk_num_n;
 		hk_tilde <= hk_tilde_n;
 	end
+	// the mouse (a clock, any clock: not only in the step of the hotkeys)
+	if (sel_we && !reset)
+		sel <= sel_in;
 end
 
 endmodule

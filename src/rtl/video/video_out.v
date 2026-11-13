@@ -51,6 +51,9 @@ module video_out #(
 	input wire full,
 	input wire [1:0] sel,
 	input wire [2:0] rim_col,     // colour of the frame of the selected machine {G, R, B}, bright
+	input wire [9:0] cur_x,       // the mouse cursor of the quad view (picture position of its top left pixel)
+	input wire [9:0] cur_y,
+	input wire cur_on,
 
 	input wire [3:0] pix,
 
@@ -145,7 +148,34 @@ always @(posedge clk) begin
 	end
 end
 
-reg qa_vis = 1'b0, qa_paper = 1'b0, qa_rim = 1'b0, qa_absent = 1'b0;
+// the cursor of the quad view (quad_mouse.v), 16 x 16: a row is {mask, white} (bit 15 the left pixel), black outline
+function [31:0] cursor_row;
+	input [3:0] r;
+	case (r)
+		4'd0: cursor_row = 32'h8000_0000;
+		4'd1: cursor_row = 32'hC000_0000;
+		4'd2: cursor_row = 32'hE000_4000;
+		4'd3: cursor_row = 32'hF000_6000;
+		4'd4: cursor_row = 32'hF800_7000;
+		4'd5: cursor_row = 32'hFC00_7800;
+		4'd6: cursor_row = 32'hFE00_7C00;
+		4'd7: cursor_row = 32'hFF00_7E00;
+		4'd8: cursor_row = 32'hFF80_7F00;
+		4'd9: cursor_row = 32'hFFC0_7F80;
+		4'd10: cursor_row = 32'hFFE0_7FC0;
+		4'd11: cursor_row = 32'hFFF0_7E00;
+		4'd12: cursor_row = 32'hFF00_7600;
+		4'd13: cursor_row = 32'hFF80_6700;
+		4'd14: cursor_row = 32'hE780_4300;
+		default: cursor_row = 32'hC300_0000;
+	endcase
+endfunction
+
+wire [9:0] cdx = qx - cur_x;
+wire [9:0] cdy = sy - cur_y;
+wire [31:0] c_row = cursor_row(cdy[3:0]);
+
+reg qa_vis = 1'b0, qa_paper = 1'b0, qa_rim = 1'b0, qa_absent = 1'b0, qa_cur = 1'b0, qa_cur_w = 1'b0;
 reg [1:0] qa_m = 2'd0;
 reg [2:0] qa_bit = 3'd0;
 // q_words / q_brds come from the block RAMs of the machines, one clock after q_addr / q_brd_addr: the word of
@@ -158,6 +188,8 @@ always @(posedge clk) begin
 	qa_paper <= (hq < 9'd256) && (vq < 9'd192);
 	qa_rim <= (qm == sel) && (xq < 9'd2 || xq >= 9'd366 || yq < 9'd2 || yq >= 9'd286);
 	qa_absent <= (qm >= NUM_MACHINES);
+	qa_cur <= cur_on && cdx < 10'd16 && cdy < 10'd16 && c_row[16 + 15 - cdx[3:0]];
+	qa_cur_w <= c_row[15 - cdx[3:0]];
 	qa_m <= qm;
 	qa_bit <= hq[2:0];
 end
@@ -209,6 +241,10 @@ always @(posedge clk) begin
 			g <= diag_ok[diag_i[1:0]] ? 8'hFF : 8'h00;
 			b <= 8'h00;
 		end
+	end else if (!full && qa_cur) begin
+		r <= qa_cur_w ? 8'hFF : 8'h00;
+		g <= qa_cur_w ? 8'hFF : 8'h00;
+		b <= qa_cur_w ? 8'hFF : 8'h00;
 	end else if (!full && qa_rim) begin
 		r <= rim_col[1] ? 8'hFF : 8'h00;
 		g <= rim_col[2] ? 8'hFF : 8'h00;
