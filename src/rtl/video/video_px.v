@@ -7,7 +7,8 @@
  The last stage of the video on clk_sys (84 MHz) with the pixel clock of the video DAC (V_CLK):
  - full screen: the picture of video_out (clk_bus, 28 MHz) taken with ce28 (bus_ce: the clk_sys period that ends with
    an edge of clk_bus), pixels of 28 MHz as before;
- - quad view: pixels of 21.02 MHz = clk_sys / 4 (ce21) from the row buffer that video_out fills on clk_bus one row
+ - quad view: pixels of 21.02 MHz = clk_sys / 4 (narrow border) or 28.03 MHz = clk_sys / 3 (the whole border) from
+   the row buffer that video_out fills on clk_bus one row
    ahead (two rows of 576 pixels, a 5-bit code). A VGA line is 896 clocks of clk_bus = 2688 of clk_sys = 672
    pixels of 21 MHz exactly, so with the counter c started at each row (qs_start of video_out) the pixels keep
    their place: no jitter. The syncs of video_out are taken with the same ce, so for the monitor the mode is the
@@ -21,6 +22,7 @@ module video_px (
 	input wire ce28,
 	input wire ce28_n,            // the value of ce28 at the next clock (bus_ce)
 	input wire full,
+	input wire narrow,            // quad view: pixels of clk_sys / 4 (576 a row), else of clk_sys / 3 (768)
 
 	// the full screen of video_out (clk_bus registers)
 	input wire [7:0] r_i,
@@ -48,23 +50,26 @@ module video_px (
 	output reg vs = 1'b1
 );
 
-// the 21 MHz pixels of a row: c counts clk_sys from the start of the row, ce21 in the clock with c[1:0] = 3
+// the pixels of a row: from the start of the row s counts the clk_sys of a pixel (0..3 narrow, 0..2 normal), px the
+// pixels; ce_q (ce21 / a ce of 28 MHz) in the last clock of a pixel
 reg st_d = 1'b0;
-reg [11:0] c = 12'd0;
+reg [1:0] s = 2'd0;
+reg [9:0] px = 10'd0;
 reg par = 1'b0, vis = 1'b0;
-reg ce21 = 1'b0;
+reg ce_q = 1'b0;
+wire [1:0] s_last = narrow ? 2'd3 : 2'd2;
+wire [1:0] s_n = (qs_start && !st_d) ? 2'd0 : (s == s_last) ? 2'd0 : s + 1'd1;
 always @(posedge clk_sys) begin
 	st_d <= qs_start;
+	s <= s_n;
 	if (qs_start && !st_d) begin
-		c <= 12'd0;
+		px <= 10'd0;
 		par <= qs_par;
 		vis <= qs_vis;
-	end else
-		c <= c + 1'd1;
-	ce21 <= (c[1:0] == 2'd2);
+	end else if (s == s_last)
+		px <= px + 1'd1;
+	ce_q <= (s_n == s_last);
 end
-
-wire [9:0] px = c[11:2];
 wire [4:0] pb_q;
 kg_sdpram #(.DW(5), .AW(11)) rowbuf(
 	.clka(clk_bus),
@@ -72,22 +77,22 @@ kg_sdpram #(.DW(5), .AW(11)) rowbuf(
 	.addra(pb_addr),
 	.dina(pb_d),
 	.clkb(clk_sys),
-	.enb(ce21),
+	.enb(ce_q),
 	.addrb({par, px}),
 	.doutb(pb_q)
 );
 
 reg q_on = 1'b0;   // pb_q is a pixel of the picture
 always @(posedge clk_sys)
-	if (ce21)
-		q_on <= vis && (px < 10'd576);
+	if (ce_q)
+		q_on <= vis && (px < (narrow ? 10'd576 : 10'd768));
 
-// ce_px = full ? ce28 : ce21, a register; v_clk from a copy of it (near the pin), in the IOB: the half clock from it to
+// ce_px = full ? ce28 : ce_q, a register; v_clk from a copy of it (near the pin), in the IOB: the half clock from it to
 // the falling edge was the worst path of clk_sys (0.05 ns) with the multiplexer in front of v_clk
 (* equivalent_register_removal = "no" *) reg vck_d = 1'b0;
 always @(posedge clk_sys) begin
-	ce_px <= full ? ce28_n : (c[1:0] == 2'd2);
-	vck_d <= full ? ce28_n : (c[1:0] == 2'd2);
+	ce_px <= full ? ce28_n : (s_n == s_last);
+	vck_d <= full ? ce28_n : (s_n == s_last);
 end
 
 always @(negedge clk_sys)

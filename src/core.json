@@ -58,7 +58,7 @@
     ],
     "boards": {
         "go": {
-            "build": "26111301",
+            "build": "26111302",
             "bitstream": "karabas_go.bin"
         }
     },
@@ -131,6 +131,16 @@
                 "White"
             ],
             "default": 4
+        },
+        {
+            "index": 19,
+            "type": "S",
+            "name": "Quad border",
+            "options": [
+                "Normal",
+                "Narrow"
+            ],
+            "default": 1
         },
         {
             "index": 2,

@@ -315,8 +315,8 @@ assign FT_OE_N = mcu_ft_vga_on ? 1'b0 : 1'b1;
 // soft switches
 
 // 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image)
-wire [19*8-1:0] softsw;
-kg_soft_switches #(.N(19), .INIT(152'h00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
+wire [20*8-1:0] softsw;
+kg_soft_switches #(.N(20), .INIT(160'h01_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
 	.clk(clk_bus),
 	.command(softsw_command),
 	.regs(softsw),
@@ -332,6 +332,7 @@ wire [2:0] sw_frame_col = softsw[42:40];
 wire sw_nmi = softsw[48];
 wire [3:0] sw_divmmc = {softsw[13*8], softsw[11*8], softsw[9*8], softsw[7*8]};
 wire [3:0] sw_sd_img = {softsw[14*8], softsw[12*8], softsw[10*8], softsw[8*8]};
+wire sw_narrow = softsw[19*8];   // quad view: 1 border 16 / 18 at 21 MHz (scale 4/3), 0 the whole border at 28 MHz
 wire [3:0] sw_acb = {softsw[18*8], softsw[17*8], softsw[16*8], softsw[15*8]};   // AY mix of machine n: 0 ABC, 1 ACB
 
 // ---------------------------------------------------------------------------------------------
@@ -776,6 +777,7 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.vga_l(vga_l),
 	.flash(frame[4]),
 	.full(full),
+	.narrow(sw_narrow),
 	.sel(sel),
 	.pix(m_pix[sel*4 +: 4]),
 	.q_go(q_go),
@@ -808,6 +810,7 @@ video_px vpx(
 	.ce28(ce_28m),
 	.ce28_n(ce_28m_n),
 	.full(full),
+	.narrow(sw_narrow),
 	.r_i(video_r),
 	.g_i(video_g),
 	.b_i(video_b),
@@ -830,8 +833,9 @@ video_px vpx(
 	.vs(px_vs)
 );
 
-// the OSD on the pixels (CE_IN): steps of 2 pixels; full screen 448 steps a line, offset 120 (TS-Conf); quad 336,
-// the picture from step 6 (16 clk_bus after the end of hsync), 288 steps: the 256 of the OSD in the middle at 22
+// the OSD on the pixels (CE_IN): steps of 2 pixels; full screen and quad with the whole border 448 steps a line,
+// offset 120 (TS-Conf); quad narrow 336, the picture from step 6 (16 clk_bus after the end of hsync), 288 steps: the
+// 256 of the OSD in the middle at 22
 kg_osd_overlay #(.H_OFFSET(120), .V_OFFSET(72), .H_OFFSET_IN(1), .CE_IN(1)) overlay(
 	.clk(clk_sys),
 	.ce(ce_px),
@@ -840,7 +844,7 @@ kg_osd_overlay #(.H_OFFSET(120), .V_OFFSET(72), .H_OFFSET_IN(1), .CE_IN(1)) over
 	.hsync_i(px_hs),
 	.vsync_i(px_vs),
 	.v_offset(11'd0),
-	.h_offset(full ? 11'd120 : 11'd22),
+	.h_offset((full || !sw_narrow) ? 11'd120 : 11'd22),
 	.osd_command(osd_command)
 );
 

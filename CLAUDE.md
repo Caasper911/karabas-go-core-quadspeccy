@@ -69,7 +69,8 @@ in the same change as the code they describe.
   instantiated directly (the T80se bus logic is in the wrapper) so the SDRAM read starts at T1; WAIT_n is only a
   safety net (`late`). Video fetch through channel B at most 12 pixels ahead.
 - `rtl/video/video_out.v`: scan doubler to 896 x 640 at 28 MHz (the 50 Hz VGA raster of TS-Conf, so the OSD
-  offsets 120 / 72 fit). Quad view at scale 4/3: pixels of 21 MHz = clk_sys / 4; `video_out` makes the next VGA row on
+  offsets 120 / 72 fit). Quad view, OSD "Quad border" (soft switch 19): Narrow at scale 4/3, pixels of 21 MHz =
+  clk_sys / 4, or Normal at scale 1, 28 MHz = clk_sys / 3; `video_out` makes the next VGA row on
   clk_bus (paper from the `qbuf` of the machines, a line fetched two rows ahead) into the row buffer of
   `rtl/video/video_px.v`, the last stage on clk_sys (`ce_px` = ce28 full screen / ce21 quad, `V_CLK`, the OSD with
   `CE_IN` of `kg_osd_overlay`: branch `osd-ce` of the submodule). `src/sim/run_vpx.sh` checks every pixel.

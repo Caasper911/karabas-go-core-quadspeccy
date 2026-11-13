@@ -44,6 +44,7 @@ module video_out #(
 
 	// mode: 1 the selected machine full screen, 0 the quad view; sel the selected machine
 	input wire full,
+	input wire narrow,            // quad view: 1 the border of 16 / 18 at 21 MHz, 0 the whole border at 28 MHz
 	input wire [1:0] sel,
 
 	input wire [3:0] pix,
@@ -107,11 +108,13 @@ kg_sdpram #(.DW(4), .AW(10)) linebuf (
 wire [8:0] dl = (vc == 9'd0) ? 9'd319 : vc - 1'd1;
 
 // ---------------------------------------------------------------------------------------------
-// quad view: scale 4/3 at 21 MHz (docs/QUAD_SCALE.md, variant B)
+// quad view: two borders (OSD "Quad border", input narrow)
 //
-// The quadrants are shown at 21.02 MHz = clk_sys / 4 (video_px.v): 576 x 608 pixels, quadrant 288 x 304 of
-// 288 x 228 Spectrum pixels (16 + 256 + 16, 18 + 192 + 18), a native line on 4 / 3 VGA lines (src = yq * 3 / 4).
-// Here, on clk_bus, the pixels of the next VGA row are made one a clock (rx 0..575) into the row buffer of
+// narrow = 1, scale 4/3 (docs/QUAD_SCALE.md, variant B): pixels of 21.02 MHz = clk_sys / 4 (video_px.v), 576 x 608,
+// quadrant 288 x 304 of 288 x 228 Spectrum pixels (16 + 256 + 16, 18 + 192 + 18), a native line on 4 / 3 VGA lines
+// (src = yq * 3 / 4). narrow = 0, scale 1: pixels of 28.03 MHz = clk_sys / 3, 768 x 608, quadrant 384 x 304, the
+// whole visible Pentagon (64 + 256 + 64, 64 + 192 + 48), a native line on a VGA line.
+// Here, on clk_bus, the pixels of the next VGA row are made one a clock (rx 0..575 / 767) into the row buffer of
 // video_px (pb_*, two rows, a 5-bit code: 0 + {bright, G, R, B}, 10000 frame, 10001 absent). The paper line of a
 // row comes from the line buffer of its machine (qbuf, filled during the row before: q_go two rows ahead, only
 // when the native line changes).
@@ -126,27 +129,29 @@ wire [9:0] qx = (vga_p >= 10'd768) ? vga_p - 10'd768 : vga_p + 10'd128;
 wire [9:0] sy1 = (sy == 10'd639) ? 10'd0 : sy + 1'd1;    // the row made now
 wire [9:0] sy2 = (sy1 == 10'd639) ? 10'd0 : sy1 + 1'd1;  // the row fetched now
 
-// a row y: its quadrant row, line in the quadrant, native line (vq: 0..191 paper, 192..209 bottom border,
-// 302..319 top border)
+// a row y: its quadrant row, line in the quadrant, native line (vq: 0..191 paper, then the bottom border; the
+// top border 302..319 narrow, 256..319 normal)
 function [8:0] yq_of;
 	input [9:0] y;
 	yq_of = (y >= 10'd304) ? y - 10'd304 : y[8:0];
 endfunction
 function [8:0] vq_of;
 	input [9:0] y;
+	input nar;
 	reg [8:0] yq;
 	reg [10:0] t;
-	reg [8:0] src;
+	reg [8:0] src, top;
 	begin
 		yq = yq_of(y);
 		t = {2'b00, yq} * 2'd3;
-		src = t[10:2];
-		vq_of = (src < 9'd18) ? src + 9'd302 : src - 9'd18;
+		src = nar ? t[10:2] : yq;
+		top = nar ? 9'd18 : 9'd64;
+		vq_of = (src < top) ? src + 9'd320 - top : src - top;
 	end
 endfunction
 
-wire [8:0] vq1 = vq_of(sy1);
-wire [8:0] vq2 = vq_of(sy2);
+wire [8:0] vq1 = vq_of(sy1, narrow);
+wire [8:0] vq2 = vq_of(sy2, narrow);
 wire [8:0] yq1 = yq_of(sy1);
 
 // fetch: at the start of row sy the paper line of row sy + 2, if it is another than that of row sy + 1
@@ -160,11 +165,13 @@ always @(posedge clk) begin
 	end
 end
 
-// make row sy1: pixel rx = qx (0..575)
-wire r_on = (qx < 10'd576) && (sy1 < 10'd608);
-wire col = (qx >= 10'd288);
-wire [8:0] xq = col ? qx - 10'd288 : qx[8:0];
-wire [8:0] hq = xq - 9'd16;                       // the native pixel of the paper
+// make row sy1: pixel rx = qx (0..575 narrow, 0..767 normal); quadrant width qw, left border bl
+wire [9:0] qw = narrow ? 10'd288 : 10'd384;
+wire [8:0] bl = narrow ? 9'd16 : 9'd64;
+wire r_on = (qx < {qw[8:0], 1'b0}) && (sy1 < 10'd608);
+wire col = (qx >= qw);
+wire [8:0] xq = col ? qx - qw : qx[8:0];
+wire [8:0] hq = xq - bl;                          // the native pixel of the paper
 wire [1:0] qm = {sy1 >= 10'd304, col};
 
 assign q_addr = {vq1[0], hq[7:3]};
@@ -179,8 +186,8 @@ always @(posedge clk) begin
 	ra_on <= r_on && !full;
 	ra_x <= qx;
 	ra_par <= sy1[0];
-	ra_paper <= (vq1 < 9'd192) && (xq >= 9'd16) && (xq < 9'd272);
-	ra_rim <= (qm == sel) && (xq < 9'd2 || xq >= 9'd286 || yq1 < 9'd2 || yq1 >= 9'd302);
+	ra_paper <= (vq1 < 9'd192) && (xq >= bl) && (xq < bl + 9'd256);
+	ra_rim <= (qm == sel) && (xq < 9'd2 || xq >= qw[8:0] - 9'd2 || yq1 < 9'd2 || yq1 >= 9'd302);
 	ra_absent <= (qm >= NUM_MACHINES);
 	ra_m <= qm;
 	ra_bit <= hq[2:0];
