@@ -9,6 +9,8 @@
  hotkeys of the quad core:
 
    Win + 1..4   the keyboard goes to machine 0..3 (sel)
+   Win + arrows the machine next to the selected one in the 2 x 2 quadrants (sel: left / right bit 0, up / down
+                bit 1; no wrap), in the quad view and in the full screen
    Win + `/~    full screen of the selected machine on / off (full_tgl, one clock)
 
  While Win is held no key goes to the machine. The mapping is that of the profi / tsconf
@@ -211,11 +213,13 @@ reg [39:0] acc = 40'd0;
 reg acc_nocs = 1'b0;
 reg [2:0] hk_num = 3'd0, hk_num_prev = 3'd0;
 reg hk_tilde = 1'b0, hk_tilde_prev = 1'b0;
+reg [2:0] hk_arr = 3'd0, hk_arr_prev = 3'd0;   // arrow: 0 none, 4 right (4F), 5 left (50), 6 down (51), 7 up (52)
 
 wire [39:0] acc_n = acc | dec[39:0];
 wire nocs_n = acc_nocs | dec[40];
 wire [2:0] hk_num_n = (code >= 8'h1E && code <= 8'h21) ? code[2:0] - 3'd5 : hk_num;   // 1E..21 -> 1..4
 wire hk_tilde_n = hk_tilde | (code == 8'h35);
+wire [2:0] hk_arr_n = (code >= 8'h4F && code <= 8'h52) ? {1'b1, code[1:0] - 2'd3} : hk_arr;
 
 wire [39:0] mods = (ctrl | alt ? k(K_SS) : 40'd0) | (alt | (shift & ~nocs_n) ? k(K_CS) : 40'd0);
 wire [39:0] joys = joy_keys(joy_type_l, joy_l) | joy_keys(joy_type_r, joy_r);
@@ -228,6 +232,7 @@ always @(posedge clk) begin
 		acc_nocs <= 1'b0;
 		hk_num <= 3'd0;
 		hk_tilde <= 1'b0;
+		hk_arr <= 3'd0;
 		keys <= 40'd0;
 		sel <= 2'd0;
 	end else if (idx == 3'd5) begin
@@ -236,6 +241,7 @@ always @(posedge clk) begin
 		acc_nocs <= 1'b0;
 		hk_num <= 3'd0;
 		hk_tilde <= 1'b0;
+		hk_arr <= 3'd0;
 		keys <= (win ? 40'd0 : (acc_n | mods)) | joys;
 		kempston <= kemp(joy_type_l, joy_l) | kemp(joy_type_r, joy_r);
 		// hotkeys on the change of the key with Win held
@@ -245,12 +251,21 @@ always @(posedge clk) begin
 			sel <= hk_num_n[1:0] - 2'd1;
 		if (win && hk_tilde_n && !hk_tilde_prev)
 			full_tgl <= 1'b1;
+		hk_arr_prev <= hk_arr_n;
+		if (win && hk_arr_n != 3'd0 && hk_arr_n != hk_arr_prev)
+			case (hk_arr_n[1:0])
+				2'd0: sel[0] <= 1'b1;   // right
+				2'd1: sel[0] <= 1'b0;   // left
+				2'd2: sel[1] <= 1'b1;   // down
+				default: sel[1] <= 1'b0;   // up
+			endcase
 	end else begin
 		idx <= idx + 1'd1;
 		acc <= acc_n;
 		acc_nocs <= nocs_n;
 		hk_num <= hk_num_n;
 		hk_tilde <= hk_tilde_n;
+		hk_arr <= hk_arr_n;
 	end
 	// the mouse (a clock, any clock: not only in the step of the hotkeys)
 	if (sel_we && !reset)

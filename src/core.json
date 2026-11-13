@@ -74,7 +74,7 @@
     ],
     "boards": {
         "go": {
-            "build": "26111605",
+            "build": "26111606",
             "bitstream": "karabas_go.bin"
         }
     },
@@ -220,7 +220,7 @@
             "index": 6,
             "type": "T",
             "name": "NMI",
-            "hotkey": "Menu+F11"
+            "hotkey": "F11"
         },
         {
             "index": 4,

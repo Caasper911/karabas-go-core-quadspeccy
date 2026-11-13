@@ -13,10 +13,11 @@
    clk_bus 28.03 MHz (/33)  the machines, video, MCU link, OSD; clk_sys / 3, every edge of clk_bus
                             is an edge of clk_sys
 
- Hotkeys (zx_kbd): Win + 1..4 the machine that has the keyboard, Win + ` full screen / quad.
+ Hotkeys (zx_kbd): Win + 1..4 the machine that has the keyboard, Win + arrows the machine next to it (2 x 2),
+ Win + ` full screen / quad.
  OSD (core.json "osd", the "index" of the items): 0 joystick L, 1 joystick R, 2 pause, 3 reset of the
- selected machine (Win+F12), 4 reset of all (F12), 5 colour of the frame of the selected machine in the
- quad view (ZX colour, default 4 green), 6 NMI of the selected machine (Win+F11), per machine n on its
+ selected machine (F12), 4 reset of all (Win+F12), 5 colour of the frame of the selected machine in the
+ quad view (ZX colour, default 4 green), 6 NMI of the selected machine (F11), per machine n on its
  page "Core n+1": 7 + 2n DivMMC on (default on), 8 + 2n SD card: the card of the board / the image
  (default image), and the F item of the image, slot n of the file mounter.
 

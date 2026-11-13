@@ -159,6 +159,7 @@ Win+1..4 выбирает машину для клавиатуры, Win+`~ пе�
 
 ## Milestone 6: другие платы
 
+- [x] Горячие клавиши: NMI — F11 (было Win+F11), Win + стрелки — соседняя машина 2 × 2. Проверено на плате
 - [ ] Karabas Mini / Mini G: HDMI (zhdmi из modules), свои ucf / tops, `boards` в `core.json`
 
 ## Открытые вопросы

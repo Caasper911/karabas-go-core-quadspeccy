@@ -81,7 +81,7 @@ in the same change as the code they describe.
   ignored; pages 0..7 at p * 16 KB, 8..63 at 0x100000 + p * 16 KB of the bank; the AY ports need A13 = 1.
 - Z-Controller in every `pentagon` (always on): #57 = the SPI data as #EB of the DivMMC, #77 bit 1 the card select
   (#E7 bit 0 for the DivMMC), read #77 = FC; the same SPI master and card (OSD SD card works with the DivMMC off).
-- `rtl/hid/zx_kbd.v`: HID report to the ZX matrix, Win+1..4 / Win+` hotkeys (and `sel_we` from the mouse).
+- `rtl/hid/zx_kbd.v`: HID report to the ZX matrix, Win+1..4 / Win+arrows (2 x 2 neighbour) / Win+` hotkeys (and `sel_we` from the mouse).
 - `rtl/hid/quad_mouse.v`: the USB mouse; full screen: Kempston mouse of the selected machine (a position per machine,
   ports `#FADF` / `#FBDF` / `#FFDF` in `pentagon`); quad view: a 16 x 16 cursor (`video_out`), a left press selects the
   quadrant's machine, a double click (20 vsyncs) makes it full screen; the middle button in the full screen goes back
