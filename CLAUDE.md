@@ -81,6 +81,9 @@ in the same change as the code they describe.
   `#FFFD` / `#BFFD`, chip select by writing `FF` / `FE` to `#FFFD`); only two generators `rtl/sound/ay_psg.v` in the top,
   for the selected machine, loaded from its copies when the selection changes. OSD AY mix ABC / ACB per machine
   (soft switches 15..18). `src/sim/tb_ay.v` checks the generator (tone, envelope shapes).
+- OSD hotkeys are matched by the MCU firmware in the order of `core.json` "osd", and an item without a modifier matches
+  with any modifier held: an item with a modifier must come before the one with the same key without it ("Reset All"
+  Menu+F12 above "Reset" F12).
 - `karabas_go_top.v`: `NUM_MACHINES` (1 now), ROM loader FIFO (MCU address bits 17..16 = machine, 15..0 = offset in
   the ROM area at 0x20000 of its bank), soft switches in the order of `core.json` "osd".
 - `rtl/tv80`: the CPU, tv80 of karabas_go_v6z80p (with its X / Y flag fixes of CPI / CPD). One for the four machines:

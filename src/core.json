@@ -58,7 +58,7 @@
     ],
     "boards": {
         "go": {
-            "build": "26111401",
+            "build": "26111402",
             "bitstream": "karabas_go.bin"
         }
     },
@@ -175,15 +175,15 @@
             "hotkey": "Menu+F11"
         },
         {
-            "index": 3,
-            "type": "T",
-            "name": "Reset",
-            "hotkey": "Menu+F12"
-        },
-        {
             "index": 4,
             "type": "T",
             "name": "Reset All",
+            "hotkey": "Menu+F12"
+        },
+        {
+            "index": 3,
+            "type": "T",
+            "name": "Reset",
             "hotkey": "F12"
         },
         {

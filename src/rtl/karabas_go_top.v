@@ -454,13 +454,36 @@ always @(posedge clk_bus)
 // reset the machine at its first memory read (found on the board: the machine never ran)
 reg [3:0] ld_out = 4'b0000;
 
+// Clearing of the DivMMC RAM: the first 128 KB (banks 0..15, 0x80000..0x9FFFF of each machine's SDRAM bank) of all
+// machines, at the start of the core and at Reset All (OSD, Win+F12, or the button), through the loader: one offset
+// in all banks at once, 128K steps of a write round each (about 50 ms). The loader FIFO goes first (the ROMs at the
+// start); the machines are in reset (ld_hold) and their DivMMC state cleared (areset of pentagon) meanwhile.
+localparam [3:0] M_MASK = (4'b0001 << NUM_MACHINES) - 4'b0001;
+reg clr_act = 1'b1;
+reg [16:0] clr_a = 17'd0;
+reg rst_all_d = 1'b0;
+wire rst_all = sw_reset_all | hw_btn[1];
+
 always @(posedge clk_bus) begin
 	ld_fifo_rd <= 1'b0;
 	ld_out <= ld_out & ld_busy;
+	rst_all_d <= rst_all;
+	if (areset || (rst_all && !rst_all_d)) begin
+		clr_act <= 1'b1;
+		clr_a <= 17'd0;
+	end
 	case (ld_st)
 		2'd0: if (!ld_fifo_empty && sdram_ready_b) begin
 			ld_fifo_rd <= 1'b1;
 			ld_st <= 2'd1;
+		end else if (clr_act && sdram_ready_b && ld_out == 4'b0000 && (ld_busy & M_MASK) == 4'b0000 && !areset) begin
+			ld_addr <= 23'h080000 | {6'd0, clr_a};
+			ld_din <= 8'd0;
+			ld_req <= ld_req ^ M_MASK;
+			ld_out <= M_MASK;
+			clr_a <= clr_a + 1'd1;
+			if (clr_a == 17'h1FFFF)
+				clr_act <= 1'b0;
 		end
 		2'd1: ld_st <= 2'd2;   // dout is valid in the clock after rd
 		default: begin
@@ -477,7 +500,7 @@ always @(posedge clk_bus) begin
 end
 
 // the loader owns channel A while it has work (and the machines are in reset for it)
-wire ld_hold = loader_act | mcu_busy | ~ld_fifo_empty | (ld_st != 2'd0) | (|ld_out) | ~sdram_ready_b;
+wire ld_hold = loader_act | mcu_busy | ~ld_fifo_empty | (ld_st != 2'd0) | (|ld_out) | ~sdram_ready_b | clr_act;
 
 genvar gi;
 generate
@@ -830,7 +853,7 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.q_brd_addr(q_brd_addr),
 	.q_brds(q_brds),
 	// diagnostics of the selected machine (docs/PLAN.md): SDRAM ready, ROM loader done, reads non-zero, no late
-	.diag_en(1'b1),
+	.diag_en(1'b0),   // hidden (the squares of the bring-up)
 	.diag_ok({~m_late[sel], m_nz[sel], ~ld_hold & ~ld_ovf, sdram_ready_b}),
 	.diag_blink(frame[4]),
 	.r(video_r),
