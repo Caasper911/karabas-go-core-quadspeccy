@@ -163,10 +163,9 @@ Win+1..4 выбирает машину для клавиатуры, Win+`~ пе�
 - [x] Ядро вынесено в `rtl/quadspeccy.v`, обёртки плат `karabas_{go,mini,minig}_top.v`, свои `.prj` / `.xst` /
       `.ucf` (выводы из TS-Conf), `make` собирает три платы, `boards` в `core.json`, «FDD» только для Go
 - [x] Звук машины всегда или только выбранной (OSD Sound Selected / Always на странице машины): один генератор
-      на восемь AY по очереди (`turbosound.v`) вместо двух для выбранной машины; `run_ts.sh`. Проверено на плате (Go)
-- [ ] Karabas Mini / Mini G: HDMI (`hdmi_out.v`: zhdmi, DCM ×5 от `clk_bus`, растр 896 × 640, DE 736 × 576, звук
-      48 кГц), звук sigma-delta (Mini) / PCM5102 (Mini G), такт FT812. Собрано, не проверено на плате:
-      примет ли монитор такой режим по HDMI, звук, MCU (burst 32 МГц на Mini G)
+      на восемь AY по очереди (`turbosound.v`) вместо двух для выбранной машины; `run_ts.sh`. Проверено на Go, Mini, Mini G
+- [x] Karabas Mini / Mini G: HDMI (`hdmi_out.v`: zhdmi, DCM ×5 от `clk_bus`, растр 896 × 640, DE 736 × 576, звук
+      48 кГц), звук sigma-delta (Mini) / PCM5102 (Mini G), такт FT812, MCU (burst 32 МГц на Mini G). Проверено на платах
 
 ## Открытые вопросы
 
