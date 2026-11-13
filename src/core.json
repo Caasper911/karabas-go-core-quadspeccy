@@ -58,7 +58,7 @@
     ],
     "boards": {
         "go": {
-            "build": "26111301",
+            "build": "26111303",
             "bitstream": "karabas_go.bin"
         }
     },

@@ -68,9 +68,11 @@ in the same change as the code they describe.
 - `rtl/zx/zx_timing.v`: one Pentagon raster for all machines (lock step). `rtl/zx/pentagon.v`: one machine: T80
   instantiated directly (the T80se bus logic is in the wrapper) so the SDRAM read starts at T1; WAIT_n is only a
   safety net (`late`). Video fetch through channel B at most 12 pixels ahead.
-- `rtl/video/video_out.v`: scan doubler to 896 x 640 at 28 MHz (the 50 Hz VGA raster of TS-Conf, so the OSD
-  offsets 120 / 72 fit). Quad view: a VGA-timed line fetch per machine into `qbuf` (block RAM, read one clock after
-  `q_addr`, as `brd_mem`), not a frame buffer; `src/sim/tb_vq.v` compares `video_out` against a saved older copy.
+- `rtl/video/video_out.v`: scan doubler to 896 x 640 at 28 MHz (the 50 Hz VGA raster of TS-Conf), blanking as 720 x
+  576p50: visible 736 x 576, back porch 80 clocks (16 lit the picture on some monitors: black level clamp); the OSD
+  centred (offsets 96 / 68). Quad view: quadrants 368 x 288, a VGA-timed line fetch per machine into `qbuf` (block
+  RAM, read one clock after `q_addr`, as `brd_mem`), not a frame buffer; `src/sim/run_vpx.sh` checks every pixel.
+  (Scale 4/3 at 21 MHz was tried, branch `quad-scale` history: looked bad, removed.)
 - `rtl/hid/zx_kbd.v`: HID report to the ZX matrix, Win+1..4 / Win+` hotkeys.
 - TurboSound (AY only, no YM): each `pentagon` keeps the 32 registers of its two AY (distributed RAM, ports
   `#FFFD` / `#BFFD`, chip select by writing `FF` / `FE` to `#FFFD`); only two generators `rtl/sound/ay_psg.v` in the top,

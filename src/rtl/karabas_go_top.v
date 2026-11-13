@@ -792,7 +792,9 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.vs(video_vs)
 );
 
-kg_osd_overlay #(.H_OFFSET(120), .V_OFFSET(72)) overlay(
+// the OSD in the middle of the picture (counted from the end of the syncs, steps of 2 clocks / 2 lines): the picture
+// from step 40 (vga_x 392), 368 steps wide: 96; from line step 28 (dl 272 after the vsync ending at 244), 288: 68
+kg_osd_overlay #(.H_OFFSET(96), .V_OFFSET(68)) overlay(
 	.clk(clk_bus),
 	.rgb_i({video_r, video_g, video_b}),
 	.rgb_o({osd_r, osd_g, osd_b}),

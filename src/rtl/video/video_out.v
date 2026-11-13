@@ -14,8 +14,8 @@
  pix is the colour of the pixel hc / vc of two ce7 before (pentagon.v), so it is written at the
  position of hc / vc delayed by two ce7.
 
- Quad view (full = 0): the visible part of the raster, 768 clocks x 608 lines, holds four quadrants of
- 384 x 304: the whole visible picture of a Pentagon (64 + 256 + 64 pixels, 64 + 192 + 48 lines), one
+ Quad view (full = 0): the visible part of the raster, 736 clocks x 576 lines, holds four quadrants of
+ 368 x 288: the visible picture of the full screen (56 + 256 + 56 pixels, 48 + 192 + 48 lines), one
  pixel per clock of 28 MHz and one line per VGA line, half the size of the full screen in both
  directions. Machine 2 * row + column. A paper line comes from the line buffer of its machine, read
  from the SDRAM during the VGA line before it (q_go); the border has the colour of that native line
@@ -23,9 +23,13 @@
  are grey. The picture of the quad view is the screen memory at the time of the fetch, not the beam
  of the machine: multicolour and border effects are not exact there.
 
- VGA (vga_x 0..447 at 14 MHz, dl the native line shown):
-   vga_x 0..255 paper, 256..319 right border, 320..383 blank (hsync 328..375), 384..447 left border
-   dl 240..255 blank, vsync in 242..243 (4 VGA lines); both syncs low active
+ VGA (vga_x 0..447 at 14 MHz, dl the native line shown), the porches of 720 x 576 p50: monitors take the black level
+ at the start of the back porch; with the 16 clocks of before (0.57 us) some of them took the colour of the border
+ there and lit the picture (found on monitors):
+   vga_x 0..255 paper, 256..311 right border, 312..391 blank: front porch 312..319 (16 clocks, 0.57 us), hsync
+   320..351 (64, 2.3 us), back porch 352..391 (80, 2.9 us); 392..447 left border (56 + 256 + 56 visible, 736 clocks)
+   dl 0..191 paper, 192..239 bottom border, 240..271 blank (vsync in 242..243: 4 + 4 + 56 VGA lines), 272..319 top
+   border (48 + 192 + 48 visible, 576 VGA lines); both syncs low active
 */
 
 module video_out #(
@@ -105,20 +109,22 @@ wire [8:0] dl = (vc == 9'd0) ? 9'd319 : vc - 1'd1;
 // quad view
 
 // the doubled line shown (full screen: 2 * dl + half) and the screen position: q from the left edge of
-// the picture (after the back porch, p 768), sy from its top (line 512, the first line of the top border)
+// the picture (after the back porch, p 784), sy from its top (line 544 = 2 * dl 272, the first visible line of the top
+// border); the picture is the visible part of the raster, 736 x 576, four quadrants of 368 x 288 (56 + 256 + 56,
+// 48 + 192 + 48: the border of the full screen)
 wire [9:0] ld = (vga_l < 10'd2) ? vga_l + 10'd638 : vga_l - 10'd2;
-wire [9:0] row = (vga_p >= 10'd768) ? ((ld == 10'd639) ? 10'd0 : ld + 1'd1) : ld;
-wire [9:0] sy = (row >= 10'd512) ? row - 10'd512 : row + 10'd128;
-wire [9:0] qx = (vga_p >= 10'd768) ? vga_p - 10'd768 : vga_p + 10'd128;
+wire [9:0] row = (vga_p >= 10'd784) ? ((ld == 10'd639) ? 10'd0 : ld + 1'd1) : ld;
+wire [9:0] sy = (row >= 10'd544) ? row - 10'd544 : row + 10'd96;
+wire [9:0] qx = (vga_p >= 10'd784) ? vga_p - 10'd784 : vga_p + 10'd112;
 
-wire q_vis = (qx < 10'd768) && (sy < 10'd608);
-wire col = (qx >= 10'd384);
-wire qrow = (sy >= 10'd304);
-wire [8:0] xq = col ? qx - 10'd384 : qx[8:0];
-wire [8:0] yq = qrow ? sy - 10'd304 : sy[8:0];
+wire q_vis = (qx < 10'd736) && (sy < 10'd576);
+wire col = (qx >= 10'd368);
+wire qrow = (sy >= 10'd288);
+wire [8:0] xq = col ? qx - 10'd368 : qx[8:0];
+wire [8:0] yq = qrow ? sy - 10'd288 : sy[8:0];
 // the native position of the pixel
-wire [8:0] hq = (xq < 9'd64) ? xq + 9'd384 : xq - 9'd64;
-wire [8:0] vq = (yq < 9'd64) ? yq + 9'd256 : yq - 9'd64;
+wire [8:0] hq = (xq < 9'd56) ? xq + 9'd392 : xq - 9'd56;
+wire [8:0] vq = (yq < 9'd48) ? yq + 9'd272 : yq - 9'd48;
 wire [1:0] qm = {qrow, col};
 
 assign q_addr = {sy[0], hq[7:3]};
@@ -127,13 +133,13 @@ assign q_brd_addr = vq;
 
 // the request of the next line, at the start of a line of the picture
 wire [9:0] sy_n = (sy == 10'd639) ? 10'd0 : sy + 1'd1;
-wire [8:0] yq_n = (sy_n >= 10'd304) ? sy_n - 10'd304 : sy_n[8:0];
-wire [8:0] vq_n = (yq_n < 9'd64) ? yq_n + 9'd256 : yq_n - 9'd64;
+wire [8:0] yq_n = (sy_n >= 10'd288) ? sy_n - 10'd288 : sy_n[8:0];
+wire [8:0] vq_n = (yq_n < 9'd48) ? yq_n + 9'd272 : yq_n - 9'd48;
 
 always @(posedge clk) begin
 	q_go <= 2'b00;
-	if (!full && vga_p == 10'd768 && sy_n < 10'd608 && vq_n < 9'd192) begin
-		q_go <= (sy_n >= 10'd304) ? 2'b10 : 2'b01;
+	if (!full && vga_p == 10'd784 && sy_n < 10'd576 && vq_n < 9'd192) begin
+		q_go <= (sy_n >= 10'd288) ? 2'b10 : 2'b01;
 		q_vc <= vq_n[7:0];
 		q_buf <= sy_n[0];
 	end
@@ -150,7 +156,7 @@ wire [2:0] qa_brd = q_brds[qa_m*3 +: 3];
 always @(posedge clk) begin
 	qa_vis <= q_vis;
 	qa_paper <= (hq < 9'd256) && (vq < 9'd192);
-	qa_rim <= (qm == sel) && (xq < 9'd2 || xq >= 9'd382 || yq < 9'd2 || yq >= 9'd302);
+	qa_rim <= (qm == sel) && (xq < 9'd2 || xq >= 9'd366 || yq < 9'd2 || yq >= 9'd286);
 	qa_absent <= (qm >= NUM_MACHINES);
 	qa_m <= qm;
 	qa_bit <= hq[2:0];
@@ -165,19 +171,21 @@ wire [3:0] c_pix = full ? lb_q : q_pix;
 reg blank_a = 1'b1, hs_a = 1'b1, vs_a = 1'b1;
 reg diag_a = 1'b0;
 reg [2:0] diag_i = 3'd0;
-wire diag_line = diag_en && dl >= 9'd264 && dl < 9'd272;
+wire diag_line = diag_en && dl >= 9'd272 && dl < 9'd280;
 
 always @(posedge clk) begin
 	// stage a: the address goes into the line buffer, the syncs of the same position
-	blank_a <= (vga_x >= 9'd320 && vga_x < 9'd384) || (dl >= 9'd240 && dl < 9'd256);
-	hs_a <= ~(vga_x >= 9'd328 && vga_x < 9'd376);
+	// lines: by the rows of the picture (sy, from the left border at vga_x 392), as the quad view; with dl (which
+	// changes at vga_x 0) the first visible line had no left border and the one after the last had it
+	blank_a <= (vga_x >= 9'd312 && vga_x < 9'd392) || (sy >= 10'd576);
+	hs_a <= ~(vga_x >= 9'd320 && vga_x < 9'd352);
 	vs_a <= ~(dl == 9'd242 || dl == 9'd243);
 	diag_a <= 1'b1;
-	if (diag_line && vga_x >= 9'd388 && vga_x < 9'd396) diag_i <= 3'd0;
-	else if (diag_line && vga_x >= 9'd400 && vga_x < 9'd408) diag_i <= 3'd1;
-	else if (diag_line && vga_x >= 9'd412 && vga_x < 9'd420) diag_i <= 3'd2;
+	if (diag_line && vga_x >= 9'd394 && vga_x < 9'd402) diag_i <= 3'd0;
+	else if (diag_line && vga_x >= 9'd404 && vga_x < 9'd412) diag_i <= 3'd1;
+	else if (diag_line && vga_x >= 9'd414 && vga_x < 9'd422) diag_i <= 3'd2;
 	else if (diag_line && vga_x >= 9'd424 && vga_x < 9'd432) diag_i <= 3'd3;
-	else if (diag_line && vga_x >= 9'd436 && vga_x < 9'd444) diag_i <= 3'd4;
+	else if (diag_line && vga_x >= 9'd434 && vga_x < 9'd442) diag_i <= 3'd4;
 	else diag_a <= 1'b0;
 
 	// stage b: the colour
