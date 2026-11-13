@@ -314,8 +314,8 @@ assign FT_OE_N = mcu_ft_vga_on ? 1'b0 : 1'b1;
 // soft switches
 
 // 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image)
-wire [19*8-1:0] softsw;
-kg_soft_switches #(.N(19), .INIT(152'h00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
+wire [21*8-1:0] softsw;
+kg_soft_switches #(.N(21), .INIT(168'h00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
 	.clk(clk_bus),
 	.command(softsw_command),
 	.regs(softsw),
@@ -332,6 +332,8 @@ wire sw_nmi = softsw[48];
 wire [3:0] sw_divmmc = {softsw[13*8], softsw[11*8], softsw[9*8], softsw[7*8]};
 wire [3:0] sw_sd_img = {softsw[14*8], softsw[12*8], softsw[10*8], softsw[8*8]};
 wire [3:0] sw_acb = {softsw[18*8], softsw[17*8], softsw[16*8], softsw[15*8]};   // AY mix of machine n: 0 ABC, 1 ACB
+wire sw_tape_all = softsw[19*8];          // Tape in: 0 Board (all machines hear TAPE_IN), 1 Core (from the Tape out core)
+wire [1:0] sw_tape_core = softsw[20*8 +: 2];   // Tape out: the machine on TAPE_OUT (Core 1..4)
 
 // ---------------------------------------------------------------------------------------------
 // keyboard
@@ -511,6 +513,16 @@ wire [4*16-1:0] q_words;
 wire [4*3-1:0] q_brds;
 
 wire [3:0] m_beeper, m_mic, m_late, m_nz;
+
+// tape: Tape in = Board: every machine hears TAPE_IN of the board; = Core: every machine but the Tape out one hears the
+// MIC of that one (a SAVE there is a LOAD in the others), the Tape out one TAPE_IN. TAPE_OUT: MIC of the Tape out one.
+wire [1:0] tape_core = (sw_tape_core < NUM_MACHINES) ? sw_tape_core : 2'd0;
+wire [3:0] m_tape_in;
+generate
+	for (gi = 0; gi < 4; gi = gi + 1) begin : g_tape
+		assign m_tape_in[gi] = (sw_tape_all && tape_core != gi) ? m_mic[tape_core] : TAPE_IN;
+	end
+endgenerate
 wire [3:0] m_ay_we;
 wire [4*5-1:0] m_ay_wa;
 wire [4*8-1:0] m_ay_wd, m_ay_rd;
@@ -638,7 +650,7 @@ generate
 				.frame(r_frame[gi*5 +: 5]),
 				.keys(sel == gi ? kbd_keys : 40'd0),
 				.kempston(sel == gi ? kbd_kempston : 8'd0),
-				.tape_in(TAPE_IN),
+				.tape_in(m_tape_in[gi]),
 				.nmi(sw_nmi && sel == gi),
 				// power on for the DivMMC (a reset keeps its state): the start of the core and the ROM loading
 				.areset(areset | ld_hold),
@@ -860,7 +872,7 @@ end
 
 wire s_beep = m_beeper[sel];
 wire s_mic = m_mic[sel];
-wire [15:0] beep = (s_beep ? 16'h2000 : 16'd0) + (s_mic ? 16'h0800 : 16'd0) + (TAPE_IN ? 16'h0400 : 16'd0);
+wire [15:0] beep = (s_beep ? 16'h2000 : 16'd0) + (s_mic ? 16'h0800 : 16'd0) + (m_tape_in[sel] ? 16'h0400 : 16'd0);
 reg [15:0] audio_l = 16'd0, audio_r = 16'd0;
 always @(posedge clk_bus) begin
 	audio_l <= beep + {2'b00, ay_l, 3'b000};
@@ -868,7 +880,7 @@ always @(posedge clk_bus) begin
 end
 
 assign BEEPER = s_beep;
-assign TAPE_OUT = s_mic;
+assign TAPE_OUT = m_mic[tape_core];
 
 kg_pcm5102 #(.DIV_BITS(1)) pcm5102(
 	.clk(clk_bus),

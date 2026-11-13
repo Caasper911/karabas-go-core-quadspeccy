@@ -58,7 +58,7 @@
     ],
     "boards": {
         "go": {
-            "build": "26111303",
+            "build": "26111304",
             "bitstream": "karabas_go.bin"
         }
     },
@@ -142,6 +142,28 @@
             ],
             "default": 0,
             "hotkey": "Menu+P"
+        },
+        {
+            "index": 19,
+            "type": "S",
+            "name": "Tape in",
+            "options": [
+                "Board",
+                "Core"
+            ],
+            "default": 0
+        },
+        {
+            "index": 20,
+            "type": "S",
+            "name": "Tape out",
+            "options": [
+                "Core 1",
+                "Core 2",
+                "Core 3",
+                "Core 4"
+            ],
+            "default": 0
         },
         {
             "type": "-"
