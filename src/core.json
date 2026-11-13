@@ -16,6 +16,10 @@
             "address": 16384
         },
         {
+            "filename": "roms/trdos504t.rom",
+            "address": 32768
+        },
+        {
             "filename": "roms/esxdos089.bin",
             "address": 49152
         },
@@ -26,6 +30,10 @@
         {
             "filename": "roms/48.rom",
             "address": 81920
+        },
+        {
+            "filename": "roms/trdos504t.rom",
+            "address": 98304
         },
         {
             "filename": "roms/esxdos089.bin",
@@ -40,6 +48,10 @@
             "address": 147456
         },
         {
+            "filename": "roms/trdos504t.rom",
+            "address": 163840
+        },
+        {
             "filename": "roms/esxdos089.bin",
             "address": 180224
         },
@@ -52,13 +64,17 @@
             "address": 212992
         },
         {
+            "filename": "roms/trdos504t.rom",
+            "address": 229376
+        },
+        {
             "filename": "roms/esxdos089.bin",
             "address": 245760
         }
     ],
     "boards": {
         "go": {
-            "build": "26111404",
+            "build": "26111504",
             "bitstream": "karabas_go.bin"
         }
     },
@@ -166,12 +182,34 @@
             "default": 0
         },
         {
+            "index": 23,
+            "type": "S",
+            "name": "FDD",
+            "options": [
+                "Core 1",
+                "Core 2",
+                "Core 3",
+                "Core 4"
+            ],
+            "default": 0
+        },
+        {
             "index": 21,
             "type": "S",
             "name": "Keys to",
             "options": [
                 "Selected",
                 "All"
+            ],
+            "default": 0
+        },
+        {
+            "index": 22,
+            "type": "S",
+            "name": "Mouse middle",
+            "options": [
+                "Quad view",
+                "Machine"
             ],
             "default": 0
         },

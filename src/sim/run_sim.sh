@@ -20,13 +20,17 @@ MINGW*|MSYS*|CYGWIN*)
 esac
 
 mkdir -p work
+cp ../rtl/vg93/vg93-microcode-rom.hex work/   # the microcode of the VG93 model (\$readmemh in the work directory)
 printf '\377%.0s' $(seq 16384) > work/ff16k.bin
 # SDTEST=1: the SD test program (sdtest.asm) in the place of the ESXDOS ROM
 ESX=../roms/esxdos089.bin
 if [ "${SDTEST:-0}" = 1 ]; then sjasmplus --nologo sdtest.asm > /dev/null && ESX=work/sdtest.bin; fi
 # TESTROM=<name>: <name>.asm in the place of the ESXDOS ROM
 if [ -n "${TESTROM:-}" ]; then sjasmplus --nologo $TESTROM.asm > /dev/null && ESX=work/$TESTROM.bin; fi
-$PY ../../tools/rom2hex.py ../roms/128.rom ../roms/48.rom work/ff16k.bin $ESX work/roms.hex
+# TRDOS=1: trtest.asm as ROM 0 and ROM 2 (the TR-DOS slot), the machine with TR-DOS (DivMMC off)
+ROM0=../roms/128.rom ROM2=work/ff16k.bin
+if [ "${TRDOS:-0}" = 1 ]; then sjasmplus --nologo trtest.asm > /dev/null && ROM0=work/trtest0.bin ROM2=work/trtest2.bin; fi
+$PY ../../tools/rom2hex.py $ROM0 ../roms/48.rom $ROM2 $ESX work/roms.hex
 
 cat > work/tb.prj <<PRJ
 vhdl work "../../rtl/t80/T80_Pack.vhd"
@@ -43,6 +47,23 @@ verilog work "../../rtl/tv80/tv80q_core.v"
 verilog work "../../rtl/tv80/tv80_quad.v"
 verilog work "../../rtl/sdram/sdram_ctrl.v"
 verilog work "../../rtl/zx/zx_timing.v"
+verilog work "../../rtl/vg93/vg93_urom.v"
+verilog work "../../rtl/vg93/vg93_dcnt.v"
+verilog work "../../rtl/vg93/vg93_counters.v"
+verilog work "../../rtl/vg93/vg93_crc.v"
+verilog work "../../rtl/vg93/vg93_data_channel.v"
+verilog work "../../rtl/vg93/vg93_decoder.v"
+verilog work "../../rtl/vg93/vg93_drive.v"
+verilog work "../../rtl/vg93/vg93_host_bus.v"
+verilog work "../../rtl/vg93/vg93_read_path.v"
+verilog work "../../rtl/vg93/vg93_sequencer.v"
+verilog work "../../rtl/vg93/vg93_status.v"
+verilog work "../../rtl/vg93/vg93_task_regs.v"
+verilog work "../../rtl/vg93/vg93_timing.v"
+verilog work "../../rtl/vg93/vg93_write_path.v"
+verilog work "../../rtl/vg93/vg93_top.v"
+verilog work "../../rtl/vg93/fdd_glue.v"
+verilog work "../../rtl/vg93/hrdy_fdc.v"
 verilog work "../../rtl/zx/pentagon.v"
 verilog work "../../rtl/sd/kg_sd_emu.v"
 verilog work "../../../modules/rtl/mem/kg_tdpram.v"
@@ -53,7 +74,7 @@ PRJ
 
 cd work
 fuse -intstyle silent -incremental -lib unisims_ver -prj tb.prj -o $EXE -timeprecision_vhdl 1ps \
-	-d FRAMES=$FRAMES -d RESET_AT=${RESET_AT:-0} -d SDEMU=${SDEMU:-0} -d SDTEST=${SDTEST:-0} -d BANK=${BANK:-0} -d QUAD=${QUAD:-0} -d CUSTOM_ROM=$([ "$ESX" = ../roms/esxdos089.bin ] && echo 0 || echo 1) work.tb_pentagon work.glbl > fuse.log 2>&1 || { tail -30 fuse.log; exit 1; }
+	-d FRAMES=$FRAMES -d RESET_AT=${RESET_AT:-0} -d SDEMU=${SDEMU:-0} -d SDTEST=${SDTEST:-0} -d BANK=${BANK:-0} -d QUAD=${QUAD:-0} -d TRDOS=${TRDOS:-0} -d CUSTOM_ROM=$([ "$ESX" = ../roms/esxdos089.bin ] && [ "${TRDOS:-0}" = 0 ] && echo 0 || echo 1) work.tb_pentagon work.glbl > fuse.log 2>&1 || { tail -30 fuse.log; exit 1; }
 echo "run all" > run.tcl
 echo "quit" >> run.tcl
 $EXE -intstyle silent -tclbatch run.tcl -testplusarg FRAMES=$FRAMES | tee sim.log | grep -vE "^(ISim|This is a|Time resolution|Simulator is doing|Finished circuit|WARNING: A WEBPACK)" || true

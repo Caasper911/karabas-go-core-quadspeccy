@@ -71,6 +71,15 @@ module pentagon #(
 	input wire nmi,               // NMI while high
 	input wire areset,            // power on (the start of the core): clears the DivMMC, a reset does not
 
+	// TR-DOS and the Beta Disk (the controller hrdy_fdc in the top): this machine has them (OSD FDD, DivMMC off)
+	input wire trdos_en,
+	output wire fdc_cs,           // an I/O access to a register of the VG93 (#1F, #3F, #5F, #7F) in TR-DOS
+	output wire fdc_csff,         // to the system port #FF in TR-DOS
+	output wire fdc_rd,           // the I/O read / write of this M-cycle
+	output wire fdc_wr,
+	input wire [7:0] fdc_q,
+	input wire fdc_busy,          // WAIT of the controller
+
 	// DivMMC
 	input wire divmmc_en,
 	output reg spi_sck = 1'b0,
@@ -257,6 +266,13 @@ reg dv_automap = 1'b0, dv_detect = 1'b0;
 wire dv_instant = m1_cycle & cpu_intcycle_n & (cpu_a[15:8] == 8'h3D);
 wire dv_mapped = divmmc_en & (dv_conmem | dv_automap | dv_instant);
 
+// TR-DOS (Beta Disk, as Pentagon): on with an opcode fetch from 3D00..3DFF while the ROM of BASIC 48 is on, off with an
+// opcode fetch from the RAM (4000..FFFF); while on, the TR-DOS ROM (ROM 2, 0x28000) is in 0000..3FFF and the ports of
+// the controller are there. The fetch at 3Dxx itself comes from the TR-DOS ROM (the font of BASIC 48 is there).
+reg dos = 1'b0;
+wire dos_instant = m1_cycle & cpu_intcycle_n & (cpu_a[15:8] == 8'h3D) & p7ffd[4];
+wire dos_rom = trdos_en & (dos | dos_instant);
+
 // memory map
 reg [22:0] map_addr;
 reg map_ro;
@@ -269,7 +285,7 @@ always @* begin
 		map_ro = dv_mapram && dv_bank == 6'd3;
 		map_addr = {4'b0001, dv_bank, cpu_a[12:0]};
 	end else case (cpu_a[15:14])
-		2'd0: begin map_ro = 1'b1; map_addr = {5'd0, 2'b10, 1'b0, p7ffd[4], cpu_a[13:0]}; end   // ROM 0 / 1
+		2'd0: begin map_ro = 1'b1; map_addr = {5'd0, 2'b10, dos_rom ? 2'b10 : {1'b0, p7ffd[4]}, cpu_a[13:0]}; end   // ROM 0 / 1 / TR-DOS
 		2'd1: map_addr = {6'd0, 3'd5, cpu_a[13:0]};
 		2'd2: map_addr = {6'd0, 3'd2, cpu_a[13:0]};
 		default: map_addr = {6'd0, p7ffd[2:0], cpu_a[13:0]};
@@ -314,6 +330,8 @@ always @* begin
 		port_q = io_done ? eb_q : spi_in;
 	else if (!cpu_a[0])
 		port_q = {1'b1, tape_in, 1'b1, kb_col};
+	else if (fdc_cs || fdc_csff)
+		port_q = fdc_q;
 	else if (ay_port && cpu_a[14])
 		port_q = ay_rv ? ay_ram[{ay_chip, ay_reg}] : 8'hFF;
 	else if (cpu_a[7:0] == 8'h1F)
@@ -565,7 +583,29 @@ always @(posedge clk)
 		spi_in <= {spi_sr[6:0], spi_miso};
 
 // data of a read: wait while it is not there
-assign cpu_wait_n = ~(rd_cycle & (pend | a_busy)) & ~eb_wait;
+assign cpu_wait_n = ~(rd_cycle & (pend | a_busy)) & ~eb_wait & ~(fdc_busy & (fdc_cs | fdc_csff));
+
+// the TR-DOS flag (on a reset off) and the ports of the Beta Disk
+always @(posedge clk)
+	if (reset || !trdos_en)
+		dos <= 1'b0;
+	else if (m1_read && cpu_a[15:8] == 8'h3D && p7ffd[4])
+		dos <= 1'b1;
+	else if (m1_read && cpu_a[15:14] != 2'b00)
+		dos <= 1'b0;
+// the selects as the strobes (from T2): as the iordwr of TS-Conf, the VG93 sees CS with RD or WR only
+wire io_cycle = ~m1_cycle & cpu_iorq & (cpu_ts != 3'd1);
+assign fdc_cs = trdos_en & dos & io_cycle & ~cpu_a[7] & (cpu_a[4:0] == 5'h1F);
+assign fdc_csff = trdos_en & dos & io_cycle & (cpu_a[7:0] == 8'hFF);
+// the read / write strobes from T2 on, as /RD /WR of the Z80 (T80): the data out of the CPU is valid from T2; hrdy_fdc
+// takes port #FF in every clock of a write, and the byte of before on the bus in T1 reset the VG93 through /MR now
+// and then (TR-DOS: NO DISK; found on the board, src/sim TRDOS=1 checks it)
+// /WE ends at T3 (T2 and TW only), before the address changes: the VG93 takes the register of a write by the address
+// it samples at the end of /WE (vg93_host_bus); with /WE to the end of the M-cycle the address of the next cycle was
+// there in the same clock and the byte went to another register or was lost (TR-DOS: NO DISK; found on the board).
+// /WR of the Z80 ends in the middle of T3, the address changes in the next T1.
+assign fdc_rd = io_rd & (cpu_ts != 3'd1);
+assign fdc_wr = io_wr & (cpu_ts == 3'd2);
 // FF (Pentagon: pull-ups) only in the acknowledge M1 of an interrupt. IntCycle_n of the T80 stays low for the whole
 // answer to the interrupt (the acknowledge, the push of PC and the read of the IM2 vector from the table): FF on it
 // made every IM 2 vector FFFF (found on the board: programs with IM 2 crashed or restarted).

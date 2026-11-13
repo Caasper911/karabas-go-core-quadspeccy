@@ -60,7 +60,7 @@ MAP_OPT = -logic_opt off -ol high -xe n -xt 0 -register_duplication off -r 4 -gl
 PAR_OPT = -ol high -xe n -mt 4
 
 # included or read by the sources, not in the prj
-INCLUDES = $(wildcard ../modules/rtl/mcu/*.vh)
+INCLUDES = $(wildcard ../modules/rtl/mcu/*.vh rtl/vg93/*.vh) rtl/vg93/vg93-microcode-rom.hex
 
 .PHONY: all clean $(BOARDS) $(BOARDS:=-xst) $(BOARDS:=-impl) $(BOARDS:=-core) $(BOARDS:=-report)
 

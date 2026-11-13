@@ -76,7 +76,9 @@ in the same change as the code they describe.
 - `rtl/hid/zx_kbd.v`: HID report to the ZX matrix, Win+1..4 / Win+` hotkeys (and `sel_we` from the mouse).
 - `rtl/hid/quad_mouse.v`: the USB mouse; full screen: Kempston mouse of the selected machine (a position per machine,
   ports `#FADF` / `#FBDF` / `#FFDF` in `pentagon`); quad view: a 16 x 16 cursor (`video_out`), a left press selects the
-  quadrant's machine, hidden after 244 VGA vsyncs without a report. `src/sim/run_mouse.sh`.
+  quadrant's machine, a double click (20 vsyncs) makes it full screen; the middle button in the full screen goes back
+  to the quad view (OSD Mouse middle, soft switch 22); hidden after 244 VGA vsyncs without a report.
+  `src/sim/run_mouse.sh`.
 - TurboSound (AY only, no YM): each `pentagon` keeps the 32 registers of its two AY (distributed RAM, ports
   `#FFFD` / `#BFFD`, chip select by writing `FF` / `FE` to `#FFFD`); only two generators `rtl/sound/ay_psg.v` in the top,
   for the selected machine, loaded from its copies when the selection changes. OSD AY mix ABC / ACB per machine
@@ -84,6 +86,10 @@ in the same change as the code they describe.
 - OSD hotkeys are matched by the MCU firmware in the order of `core.json` "osd", and an item without a modifier matches
   with any modifier held: an item with a modifier must come before the one with the same key without it ("Reset All"
   Menu+F12 above "Reset" F12).
+- TR-DOS / Beta Disk (Go only, `ENABLE_FDC` of the top; 0 on Mini / Mini G: not built): one `hrdy_fdc` (VG93 model
+  `rtl/vg93/` copied from karabas-go-core-tsconf, on clk_bus) on the bus of the machine of OSD FDD (soft switch 23) if
+  its DivMMC is off; `pentagon` `dos` as Pentagon (3Dxx with ROM 48, off on a fetch from RAM), ROM 2 = TR-DOS,
+  ports #1F/#3F/#5F/#7F, #FF in TR-DOS. Drive pins active high as the tsconf Go core. `run_sim.sh` with `TRDOS=1`.
 - `karabas_go_top.v`: `NUM_MACHINES` (1 now), ROM loader FIFO (MCU address bits 17..16 = machine, 15..0 = offset in
   the ROM area at 0x20000 of its bank), soft switches in the order of `core.json` "osd".
 - `rtl/tv80`: the CPU, tv80 of karabas_go_v6z80p (with its X / Y flag fixes of CPI / CPD). One for the four machines:

@@ -24,8 +24,12 @@ parameter FRAMES = `FRAMES;
 `endif
 parameter BANK = `BANK;
 localparam [31:0] BOFS = BANK << 19;   // word index of the bank in the model: {bank, row[9:0], column}
+`ifndef TRDOS
+`define TRDOS 0
+`endif
+// TRDOS = 1 (run_sim.sh): trtest.asm, the machine with TR-DOS, no DivMMC; the controller answers 5A
 `ifndef DIVMMC
-`define DIVMMC 1
+`define DIVMMC (`TRDOS ? 0 : 1)
 `endif
 parameter DIVMMC = `DIVMMC;
 `ifndef SDEMU
@@ -157,10 +161,85 @@ generate
 	end
 endgenerate
 
+// TRDOS: a write to #FF must have its byte (3C in trtest.asm) on the data bus in every clock it is seen (hrdy_fdc
+// takes port #FF in each such clock: a stale byte there reset the VG93 through /MR)
+wire fdc_cs, fdc_csff, fdc_rd, fdc_wr, fdc_busy;
+wire [7:0] fdc_q;
+integer fdc_wait_clocks = 0;
+always @(posedge clk_bus)
+	if (fdc_busy && (fdc_cs || fdc_csff)) fdc_wait_clocks = fdc_wait_clocks + 1;
+integer ff_writes = 0, ff_bad = 0;
+always @(posedge clk_bus)
+	if (fdc_csff && fdc_wr) begin
+		ff_writes = ff_writes + 1;
+		if (m.cpu_do != 8'h3C) begin
+			ff_bad = ff_bad + 1;
+			if (ff_bad < 5) $display("%t port #FF written with %h", $time, m.cpu_do);
+		end
+	end
+
+// TRDOS: the controller of the top (hrdy_fdc, the VG93 model) on the bus of the machine, and a drive: index pulses
+// (20000 clocks a turn, in the simulation), track 0 at the start 1, steps on the rising STEP (DIR 1 in)
+wire fd_side1, fd_wg, fd_wdata, fd_step, fd_dir, fd_motor;
+wire [1:0] fd_ds;
+reg [7:0] fd_track = 8'd1;
+integer fd_cnt = 0, fd_steps = 0, fd_motor_clocks = 0, fd_ds0_clocks = 0;
+reg fd_step_d = 1'b0;
+always @(posedge clk_bus) begin
+	fd_cnt = (fd_cnt == 19999) ? 0 : fd_cnt + 1;
+	fd_step_d <= fd_step;
+	if (fd_step && !fd_step_d) begin
+		fd_steps = fd_steps + 1;
+		if (fd_dir) fd_track <= fd_track + 1'd1;
+		else if (fd_track != 0) fd_track <= fd_track - 1'd1;
+	end
+	if (fd_motor) fd_motor_clocks = fd_motor_clocks + 1;
+	if (fd_ds[0]) fd_ds0_clocks = fd_ds0_clocks + 1;
+end
+generate
+	if (`TRDOS) begin : g_fdc
+		hrdy_fdc fdc(.clk(clk_bus), .ds80(1'b0), .reset(reset), .ena_cpu(`QUAD ? (cslot == 3'd0) : ce_cpu),
+			.a(m.cpu_a), .d(m.cpu_do), .wr_n(~fdc_wr), .rd_n(~fdc_rd), .iorq_n(~(fdc_rd | fdc_wr)),
+			.cs_n(~fdc_cs), .csff_n(~fdc_csff), .oe_n(), .dout(fdc_q), .busy(fdc_busy), .intrq_o(), .drq_o(),
+			.FDC_SIDE1(fd_side1), .FDC_RDATA(1'b0), .FDC_WPRT(1'b0), .FDC_TR00(fd_track == 8'd0),
+			.FDC_INDEX(fd_cnt < 200), .FDC_WG(fd_wg), .FDC_WR_DATA(fd_wdata), .FDC_STEP(fd_step), .FDC_DIR(fd_dir),
+			.FDC_MOTOR(fd_motor), .FDC_DS(fd_ds));
+		// trace: HLD, /MR, port #FF, commands
+		reg hld_d = 1'b0, mr_d = 1'b0;
+		reg [7:0] ff_d = 8'd0, cmd_d = 8'd0;
+		reg wr_d = 1'b0;
+		integer hev = 0;
+		always @(posedge clk_bus) begin
+			hld_d <= fdc.vg93_top.HLD;
+			mr_d <= fdc.port_ff_reg[2] & ~reset;
+			ff_d <= fdc.port_ff_reg;
+			if (fdc.vg93_top.HLD != hld_d) $display("%t fdc: HLD %b", $time, fdc.vg93_top.HLD);
+			if ((fdc.port_ff_reg[2] & ~reset) != mr_d) $display("%t fdc: /MR %b", $time, fdc.port_ff_reg[2] & ~reset);
+			if (fdc.port_ff_reg != ff_d) $display("%t fdc: #FF %h", $time, fdc.port_ff_reg);
+			if (fdc.vg93_top.task_regs.cmd_reg != cmd_d) $display("%t fdc: command %h", $time, fdc.vg93_top.task_regs.cmd_reg);
+			cmd_d <= fdc.vg93_top.task_regs.cmd_reg;
+			if ((fdc.vg93_top.set_hld || fdc.vg93_top.clr_hld) && hev < 40) begin
+				hev = hev + 1;
+				$display("%t fdc: set_hld %b clr_hld %b hld_pin %b mr_s %b", $time, fdc.vg93_top.set_hld,
+					fdc.vg93_top.clr_hld, fdc.vg93_top.hld_pin, fdc.vg93_top.drive.mr_s);
+			end
+			if (fdc_cs && fdc_wr && !wr_d) $display("%t fdc: write #%h <- %h (busy %b)", $time, m.cpu_a[7:0], m.cpu_do, fdc_busy);
+			wr_d <= fdc_cs && fdc_wr;
+		end
+	end else begin : g_no_fdc
+		assign fdc_q = 8'hFF;
+		assign fdc_busy = 1'b0;
+		assign {fd_side1, fd_wg, fd_wdata, fd_step, fd_dir, fd_motor} = 6'b100000;
+		assign fd_ds = 2'b00;
+	end
+endgenerate
+
 pentagon #(.CPU(`QUAD ? 2 : 1)) m(
 	.clk(clk_bus), .reset(reset), .pause(1'b0),
 	.ce7(ce7), .ce_cpu(`QUAD ? (cslot == 3'd0) : ce_cpu), .hc(hc), .vc(vc), .int_n(int_n), .frame(frame),
 	.keys(40'd0), .kempston(8'd0), .tape_in(1'b0), .beeper(beeper), .mic(mic), .nmi(1'b0), .areset(~ready),
+	.trdos_en(`TRDOS != 0), .fdc_cs(fdc_cs), .fdc_csff(fdc_csff), .fdc_rd(fdc_rd), .fdc_wr(fdc_wr),
+	.fdc_q(fdc_q), .fdc_busy(fdc_busy),
 	.divmmc_en(DIVMMC != 0), .spi_sck(spi_sck), .spi_mosi(spi_mosi), .spi_cs_n(spi_cs_n),
 	.spi_miso(USE_SDEMU ? emu_miso : 1'b1), .sd_wait(USE_SDEMU ? emu_wait : 1'b0),
 	.a_req(m_a_req), .a_we(m_a_we), .a_addr(m_a_addr), .a_din(m_a_din), .a_ack(a_ack[BANK]), .a_q(a_q[BANK*8 +: 8]),
@@ -340,6 +419,30 @@ always @(posedge clk_bus) begin
 			$display("intack: %0d T2 clocks, %0d not FF; interrupts counted by the handler: %0d", intacks, intack_bad,
 				{chip.mem[BOFS + (('h08000 + 'h1000) >> 1)]});
 			errors = errors + intack_bad;
+			if (`TRDOS) begin : trdos_check
+				reg [7:0] t [0:4];
+				reg [7:0] t5, t6, t7;
+				integer k;
+				for (k = 0; k < 5; k = k + 1)
+					t[k] = (k & 1) ? chip.mem[BOFS + (('h9000 + k) >> 1)][15:8] : chip.mem[BOFS + (('h9000 + k) >> 1)][7:0];
+				t5 = chip.mem[BOFS + ('h9005 >> 1)][15:8];
+				t6 = chip.mem[BOFS + ('h9006 >> 1)][7:0];
+				t7 = chip.mem[BOFS + ('h9006 >> 1)][15:8];
+				$display("trdos: back to back writes: sector %h (11), track %h (22); waits %0d clocks", t6, t7, fdc_wait_clocks);
+				if (t6 != 8'h11 || t7 != 8'h22 || fdc_wait_clocks == 0)
+					errors = errors + 1;
+				$display("trdos: in TR-DOS #1F %h (0) %h; after #1F %h (0) %h; end %h", t[0], t[3], t[1], t[2], t[4]);
+				$display("trdos: port #FF: %0d clocks written, %0d with another byte", ff_writes, ff_bad);
+				$display("trdos: RESTORE: status %h, track %0d, %0d steps, motor %0d clocks, drive A %0d clocks",
+					t5, fd_track, fd_steps, fd_motor_clocks, fd_ds0_clocks);
+				// status after RESTORE with head load: ready (bit 7 = 0), head loaded (5), track 0 (2), no seek error (4), not busy (0)
+				if (t5[7] || !t5[5] || t5[2] != 1'b1 || t5[4] || t5[0] || fd_track != 0 || fd_steps < 1 || fd_ds0_clocks == 0)
+					errors = errors + 1;
+				if (ff_writes == 0 || ff_bad != 0)
+					errors = errors + 1;
+				if (t[0] == 8'h00 || t[0] == 8'hFF || t[3] != 8'hAA || t[1] != 8'h00 || t[2] != 8'hF3 || t[4] != 8'h77)
+					errors = errors + 1;
+			end
 			$write("read margin (clk_bus clocks from the answer to the CPU clock): min %0d; histogram", margin_min);
 			for (mh = 0; mh <= 20; mh = mh + 1) $write(" %0d", margin_hist[mh]);
 			$write("%c", 8'd10);

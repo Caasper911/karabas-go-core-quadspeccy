@@ -30,7 +30,8 @@
 */
 
 module karabas_go_top #(
-	parameter NUM_MACHINES = 4
+	parameter NUM_MACHINES = 4,
+	parameter ENABLE_FDC = 1      // TR-DOS and the Beta Disk on the floppy drive of the board (the Go only; 0: not built)
 ) (
 	input wire CLK_50MHZ,
 
@@ -146,13 +147,6 @@ assign WWR_N = 1'b1;
 assign WRESET_N = 1'b1;
 assign WD = 16'bZZZZZZZZZZZZZZZZ;
 
-assign FDC_DRIVE = 2'b11;
-assign FDC_MOTOR = 1'b1;
-assign FDC_DIR = 1'b1;
-assign FDC_STEP = 1'b1;
-assign FDC_WDATA = 1'b1;
-assign FDC_WGATE = 1'b1;
-assign FDC_SIDE_N = 1'b1;
 
 assign MIDI_TX = 1'b1;
 assign MIDI_CLK = 1'b0;
@@ -320,8 +314,8 @@ assign FT_OE_N = mcu_ft_vga_on ? 1'b0 : 1'b1;
 // soft switches
 
 // 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image)
-wire [22*8-1:0] softsw;
-kg_soft_switches #(.N(22), .INIT(176'h00_00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
+wire [24*8-1:0] softsw;
+kg_soft_switches #(.N(24), .INIT(192'h00_00_00_00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
 	.clk(clk_bus),
 	.command(softsw_command),
 	.regs(softsw),
@@ -341,6 +335,8 @@ wire [3:0] sw_acb = {softsw[18*8], softsw[17*8], softsw[16*8], softsw[15*8]};   
 wire sw_tape_all = softsw[19*8];          // Tape in: 0 Board (all machines hear TAPE_IN), 1 Core (from the Tape out core)
 wire [1:0] sw_tape_core = softsw[20*8 +: 2];   // Tape out: the machine on TAPE_OUT (Core 1..4)
 wire sw_keys_all = softsw[21*8];          // Keys to: 0 Selected, 1 All (the quad view only)
+wire [1:0] sw_fdd_core = softsw[23*8 +: 2];    // FDD: the machine with TR-DOS and the floppy drive (Core 1..4)
+wire sw_mid_machine = softsw[22*8];       // Mouse middle: 0 Quad view (back to the quad view), 1 Machine (Kempston)
 
 // ---------------------------------------------------------------------------------------------
 // keyboard
@@ -377,11 +373,17 @@ zx_kbd kbd(
 // the machine with the keyboard (machines that are not built are not selected)
 wire [1:0] sel = (kbd_sel < NUM_MACHINES) ? kbd_sel : 2'd0;
 
-// full screen of the selected machine / quad view (Win + `); the quad view after power on
+// full screen of the selected machine / quad view (Win + `; the mouse: a double click in the quad view, the middle
+// button in the full screen); the quad view after power on
+wire ms_full_set, ms_quad_set;
 reg full = 1'b0;
 always @(posedge clk_bus)
 	if (kbd_full_tgl)
 		full <= ~full;
+	else if (ms_full_set)
+		full <= 1'b1;
+	else if (ms_quad_set)
+		full <= 1'b0;
 
 // ---------------------------------------------------------------------------------------------
 // SDRAM
@@ -557,7 +559,10 @@ quad_mouse #(.NUM_MACHINES(NUM_MACHINES)) mouse(
 	.cur_y(cur_y),
 	.cur_on(cur_on),
 	.sel_we(ms_sel_we),
-	.sel_in(ms_sel_in)
+	.sel_in(ms_sel_in),
+	.mid_quad(~sw_mid_machine),
+	.full_set(ms_full_set),
+	.quad_set(ms_quad_set)
 );
 
 // quad view: line requests from video_out, the line buffers and border memories of the machines
@@ -570,6 +575,19 @@ wire [4*16-1:0] q_words;
 wire [4*3-1:0] q_brds;
 
 wire [3:0] m_beeper, m_mic, m_late, m_nz;
+
+// TR-DOS / Beta Disk: one controller (hrdy_fdc, the VG93 model of TS-Conf) on the floppy drive of the board, for the
+// machine of OSD FDD if its DivMMC is off (both take 3D00..3DFF); the other machines have no TR-DOS
+wire [1:0] fdd_core = (sw_fdd_core < NUM_MACHINES) ? sw_fdd_core : 2'd0;
+wire [3:0] m_trdos_en;
+wire [3:0] m_fdc_cs, m_fdc_csff, m_fdc_rd, m_fdc_wr;
+wire [7:0] fdc_q;
+wire fdc_busy;
+generate
+	for (gi = 0; gi < 4; gi = gi + 1) begin : g_trdos
+		assign m_trdos_en[gi] = (ENABLE_FDC != 0) && fdd_core == gi && !sw_divmmc[gi];
+	end
+endgenerate
 
 // tape: Tape in = Board: every machine hears TAPE_IN of the board; = Core: every machine but the Tape out one hears the
 // MIC of that one (a SAVE there is a LOAD in the others), the Tape out one TAPE_IN. TAPE_OUT: MIC of the Tape out one.
@@ -607,6 +625,7 @@ always @(posedge clk_bus)
 	cslot <= ce_cpu ? 3'd1 : cslot + 1'd1;
 wire [3:0] ce_m = {cslot == 3'd6, cslot == 3'd4, cslot == 3'd2, cslot == 3'd0};
 
+wire [3:0] m_resets;
 wire [4*16-1:0] q_a;
 wire [4*8-1:0] q_do, q_dinst, q_di;
 wire [4*7-1:0] q_mc, q_ts;
@@ -694,6 +713,7 @@ generate
 			reg m_reset = 1'b1;
 			always @(posedge clk_bus)
 				m_reset <= areset | ld_hold | sw_reset_all | hw_btn[1] | ((sw_reset | hw_btn[0]) && sel == gi);
+			assign m_resets[gi] = m_reset;
 
 			pentagon #(.CPU(2)) m(
 				.clk(clk_bus),
@@ -713,6 +733,13 @@ generate
 				.nmi(sw_nmi && sel == gi),
 				// power on for the DivMMC (a reset keeps its state): the start of the core and the ROM loading
 				.areset(areset | ld_hold),
+				.trdos_en(m_trdos_en[gi]),
+				.fdc_cs(m_fdc_cs[gi]),
+				.fdc_csff(m_fdc_csff[gi]),
+				.fdc_rd(m_fdc_rd[gi]),
+				.fdc_wr(m_fdc_wr[gi]),
+				.fdc_q(fdc_q),
+				.fdc_busy(fdc_busy),
 				.divmmc_en(sw_divmmc[gi]),
 				.spi_sck(spi_sck[gi]),
 				.spi_mosi(spi_mosi[gi]),
@@ -793,6 +820,10 @@ generate
 			assign b_req[gi] = 1'b0;
 			assign b_addr[gi*23 +: 23] = 23'd0;
 			assign m_beeper[gi] = 1'b0;
+			assign m_fdc_cs[gi] = 1'b0;
+			assign m_fdc_csff[gi] = 1'b0;
+			assign m_fdc_rd[gi] = 1'b0;
+			assign m_fdc_wr[gi] = 1'b0;
 			assign m_ay_we[gi] = 1'b0;
 			assign m_ay_wa[gi*5 +: 5] = 5'd0;
 			assign m_ay_wd[gi*8 +: 8] = 8'd0;
@@ -819,6 +850,58 @@ generate
 			assign q_words[gi*16 +: 16] = 16'd0;
 			assign q_brds[gi*3 +: 3] = 3'd0;
 		end
+	end
+endgenerate
+
+// ---------------------------------------------------------------------------------------------
+// floppy drive: hrdy_fdc on the bus of the machine fdd_core (ENABLE_FDC)
+
+generate
+	if (ENABLE_FDC != 0) begin : g_fdc
+		wire [1:0] fdc_ds;
+		wire fdc_side1;
+		hrdy_fdc fdc(
+			.clk(clk_bus),
+			.ds80(1'b0),
+			.reset(m_resets[fdd_core] | ~m_trdos_en[fdd_core]),
+			.ena_cpu(ce_m[fdd_core]),
+			.a(q_a[fdd_core*16 +: 16]),
+			.d(q_do[fdd_core*8 +: 8]),
+			.wr_n(~m_fdc_wr[fdd_core]),
+			.rd_n(~m_fdc_rd[fdd_core]),
+			.iorq_n(~(m_fdc_rd[fdd_core] | m_fdc_wr[fdd_core])),
+			.cs_n(~m_fdc_cs[fdd_core]),
+			.csff_n(~m_fdc_csff[fdd_core]),
+			.oe_n(),
+			.dout(fdc_q),
+			.busy(fdc_busy),
+			.intrq_o(),
+			.drq_o(),
+			.FDC_SIDE1(fdc_side1),
+			.FDC_RDATA(FDC_RDATA),
+			.FDC_WPRT(FDC_WPRT),
+			.FDC_TR00(FDC_TR00),
+			.FDC_INDEX(FDC_INDEX),
+			.FDC_WG(FDC_WGATE),
+			.FDC_WR_DATA(FDC_WDATA),
+			.FDC_STEP(FDC_STEP),
+			.FDC_DIR(FDC_DIR),
+			.FDC_MOTOR(FDC_MOTOR),
+			.FDC_DS(fdc_ds)
+		);
+		// as the Go core of TS-Conf: the drive outputs active high (the board drives the cable), side through SIDE_N
+		assign FDC_DRIVE = fdc_ds;
+		assign FDC_SIDE_N = fdc_side1;
+	end else begin : g_no_fdc
+		assign fdc_q = 8'hFF;
+		assign fdc_busy = 1'b0;
+		assign FDC_DRIVE = 2'b00;
+		assign FDC_MOTOR = 1'b0;
+		assign FDC_DIR = 1'b0;
+		assign FDC_STEP = 1'b0;
+		assign FDC_WDATA = 1'b0;
+		assign FDC_WGATE = 1'b0;
+		assign FDC_SIDE_N = 1'b1;
 	end
 endgenerate
 
