@@ -74,7 +74,7 @@
     ],
     "boards": {
         "go": {
-            "build": "26111504",
+            "build": "26111601",
             "bitstream": "karabas_go.bin"
         }
     },
@@ -153,8 +153,8 @@
             "type": "N",
             "name": "Pause",
             "options": [
-                "Off",
-                "On"
+                "off",
+                "on"
             ],
             "default": 0,
             "hotkey": "Menu+P"
@@ -252,8 +252,8 @@
             "type": "S",
             "name": "DivMMC",
             "options": [
-                "Off",
-                "On"
+                "off",
+                "on"
             ],
             "default": 1,
             "page": 1
@@ -268,11 +268,7 @@
                 "Image"
             ],
             "default": 1,
-            "page": 1,
-            "enable_if": {
-                "item": "divmmc1",
-                "value": "On"
-            }
+            "page": 1
         },
         {
             "type": "F",
@@ -311,8 +307,8 @@
             "type": "S",
             "name": "DivMMC",
             "options": [
-                "Off",
-                "On"
+                "off",
+                "on"
             ],
             "default": 1,
             "page": 2
@@ -323,15 +319,11 @@
             "type": "S",
             "name": "SD card",
             "options": [
-                "Real",
-                "Image"
+                "real",
+                "image"
             ],
             "default": 1,
-            "page": 2,
-            "enable_if": {
-                "item": "divmmc2",
-                "value": "On"
-            }
+            "page": 2
         },
         {
             "type": "F",
@@ -349,7 +341,7 @@
             "page": 2,
             "show_if": {
                 "item": "sd2",
-                "value": "Image"
+                "value": "image"
             }
         },
         {
@@ -370,8 +362,8 @@
             "type": "S",
             "name": "DivMMC",
             "options": [
-                "Off",
-                "On"
+                "off",
+                "on"
             ],
             "default": 1,
             "page": 3
@@ -382,15 +374,11 @@
             "type": "S",
             "name": "SD card",
             "options": [
-                "Real",
-                "Image"
+                "real",
+                "image"
             ],
             "default": 1,
-            "page": 3,
-            "enable_if": {
-                "item": "divmmc3",
-                "value": "On"
-            }
+            "page": 3
         },
         {
             "type": "F",
@@ -408,7 +396,7 @@
             "page": 3,
             "show_if": {
                 "item": "sd3",
-                "value": "Image"
+                "value": "image"
             }
         },
         {
@@ -429,8 +417,8 @@
             "type": "S",
             "name": "DivMMC",
             "options": [
-                "Off",
-                "On"
+                "off",
+                "on"
             ],
             "default": 1,
             "page": 4
@@ -441,15 +429,11 @@
             "type": "S",
             "name": "SD card",
             "options": [
-                "Real",
-                "Image"
+                "real",
+                "image"
             ],
             "default": 1,
-            "page": 4,
-            "enable_if": {
-                "item": "divmmc4",
-                "value": "On"
-            }
+            "page": 4
         },
         {
             "type": "F",
@@ -467,7 +451,7 @@
             "page": 4,
             "show_if": {
                 "item": "sd4",
-                "value": "Image"
+                "value": "image"
             }
         }
     ]

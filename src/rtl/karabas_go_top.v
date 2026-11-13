@@ -20,7 +20,7 @@
  page "Core n+1": 7 + 2n DivMMC on (default on), 8 + 2n SD card: the card of the board / the image
  (default image), and the F item of the image, slot n of the file mounter.
 
- DivMMC (docs/ARCHITECTURE.md): the SPI of machine n goes to the card of the board (SD_*) when it chose
+ DivMMC and Z-Controller (docs/ARCHITECTURE.md): the SPI of machine n goes to the card of the board (SD_*) when it chose
  it and is the lowest such machine (one owner: the others see no card), else to kg_sd_emu n on the image
  of slot n (img_sdc, one request at a time for all four).
 
@@ -661,8 +661,9 @@ wire [3:0] spi_sck, spi_mosi, spi_cs_n, spi_miso, sd_wait, emu_miso, emu_wait, h
 wire [4*32-1:0] hd_lba;
 wire [4*8-1:0] hd_byte_out;
 
-// the card of the board: the lowest machine with the DivMMC on and the SD card "Real"
-wire [3:0] want_real = sw_divmmc & ~sw_sd_img;
+// the card of the board: the lowest machine with the SD card "Real" (DivMMC and Z-Controller: the Z-Controller is
+// always on, so the card is the machine's with the DivMMC off too)
+wire [3:0] want_real = ~sw_sd_img;
 wire [1:0] real_owner = want_real[0] ? 2'd0 : want_real[1] ? 2'd1 : want_real[2] ? 2'd2 : 2'd3;
 wire real_on = |want_real;
 
@@ -790,10 +791,10 @@ generate
 				.nz(m_nz[gi])
 			);
 
-			// the emulated card on the image of slot gi; reset with the machine and while the DivMMC is off
+			// the emulated card on the image of slot gi; reset with the machine
 			kg_sd_emu #(.CACHE(0)) sd_emu(
 				.clk(clk_bus),
-				.reset(m_reset | ~sw_divmmc[gi]),
+				.reset(m_reset),
 				.sclk(spi_sck[gi]),
 				.mosi(spi_mosi[gi]),
 				.cs_n(spi_cs_n[gi] | ~sw_sd_img[gi]),

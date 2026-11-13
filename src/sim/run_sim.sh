@@ -24,7 +24,8 @@ cp ../rtl/vg93/vg93-microcode-rom.hex work/   # the microcode of the VG93 model 
 printf '\377%.0s' $(seq 16384) > work/ff16k.bin
 # SDTEST=1: the SD test program (sdtest.asm) in the place of the ESXDOS ROM
 ESX=../roms/esxdos089.bin
-if [ "${SDTEST:-0}" = 1 ]; then sjasmplus --nologo sdtest.asm > /dev/null && ESX=work/sdtest.bin; fi
+# ZC=1 with it: the ports of the Z-Controller (#57 / #77) instead of those of the DivMMC (#EB / #E7)
+if [ "${SDTEST:-0}" = 1 ]; then sjasmplus --nologo $([ "${ZC:-0}" = 1 ] && echo -DZC) sdtest.asm > /dev/null && ESX=work/sdtest.bin; fi
 # TESTROM=<name>: <name>.asm in the place of the ESXDOS ROM
 if [ -n "${TESTROM:-}" ]; then sjasmplus --nologo $TESTROM.asm > /dev/null && ESX=work/$TESTROM.bin; fi
 # TRDOS=1: trtest.asm as ROM 0 and ROM 2 (the TR-DOS slot), the machine with TR-DOS (DivMMC off)

@@ -46,7 +46,8 @@ in the same change as the code they describe.
 - Options of `run_sim.sh` (environment): `RESET_AT=<frame>` a warm reset of the machine; `SDEMU=1` `kg_sd_emu` on
   the SPI of the DivMMC with a model of `img_sdc` (a 64 MB image, sector bytes = lba ^ index); `SDTEST=1` puts
   `src/sim/sdtest.asm` (sjasmplus) in the place of the ESXDOS ROM: it sends CMD0/8/55/41/58/17 through the DivMMC
-  ports and keeps the answers in RAM, the testbench prints them (2 frames are enough). ESXDOS itself reaches the card
+  ports and keeps the answers in RAM, the testbench prints them (2 frames are enough; with `ZC=1` through the
+  Z-Controller ports #57 / #77). ESXDOS itself reaches the card
   only after ~23 frames (it clears 5 RAM banks first).
   `TESTROM=<name>` assembles `src/sim/<name>.asm` into that place (`im2test`: IM 2 with a vector table, the
   testbench counts the interrupts its handler saw). The testbench compares every byte the CPU takes (`cpu_di`) with
@@ -73,6 +74,8 @@ in the same change as the code they describe.
   centred (offsets 96 / 68). Quad view: quadrants 368 x 288, a VGA-timed line fetch per machine into `qbuf` (block
   RAM, read one clock after `q_addr`, as `brd_mem`), not a frame buffer; `src/sim/run_vpx.sh` checks every pixel.
   (Scale 4/3 at 21 MHz was tried, branch `quad-scale` history: looked bad, removed.)
+- Z-Controller in every `pentagon` (always on): #57 = the SPI data as #EB of the DivMMC, #77 bit 1 the card select
+  (#E7 bit 0 for the DivMMC), read #77 = FC; the same SPI master and card (OSD SD card works with the DivMMC off).
 - `rtl/hid/zx_kbd.v`: HID report to the ZX matrix, Win+1..4 / Win+` hotkeys (and `sel_we` from the mouse).
 - `rtl/hid/quad_mouse.v`: the USB mouse; full screen: Kempston mouse of the selected machine (a position per machine,
   ports `#FADF` / `#FBDF` / `#FFDF` in `pentagon`); quad view: a 16 x 16 cursor (`video_out`), a left press selects the

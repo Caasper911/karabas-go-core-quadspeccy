@@ -2,18 +2,28 @@
 ; Automap at 0000 runs it from 0001 (the DI at 0000 comes from the Spectrum ROM). It does what a card driver
 ; does and keeps every answer in RAM (page 2, 9000..): 8 bytes after each command, then 256 bytes after CMD17.
 ; At the end 9200 = A5. tb_pentagon prints the bytes.
+; ZC defined (run_sim.sh SDTEST=1 ZC=1): the ports of the Z-Controller (#77 the card select in bit 1, #57 the data).
 	device zxspectrum48
+	IFDEF ZC
+CSPORT	equ 0x77
+SPI	equ 0x57
+CS_ON	equ 0xfd
+	ELSE
+CSPORT	equ 0xe7
+SPI	equ 0xeb
+CS_ON	equ 0xfe
+	ENDIF
 	org 0
 	di
 	ld sp,0x8000
 	ld a,0xff
-	out (0xe7),a		; card deselected
+	out (CSPORT),a		; card deselected
 	ld b,10
 dummy:	ld a,0xff
-	out (0xeb),a		; 80 clocks
+	out (SPI),a		; 80 clocks
 	djnz dummy
-	ld a,0xfe
-	out (0xe7),a		; card 0 selected
+	ld a,CS_ON
+	out (CSPORT),a		; card selected
 	ld hl,cmd0
 	ld de,0x9000
 	call cmd
@@ -34,7 +44,7 @@ dummy:	ld a,0xff
 	call cmd
 	ld hl,0x9060
 	ld b,0
-rd:	in a,(0xeb)		; the token and the sector
+rd:	in a,(SPI)		; the token and the sector
 	ld (hl),a
 	inc hl
 	djnz rd
@@ -44,11 +54,11 @@ rd:	in a,(0xeb)		; the token and the sector
 
 cmd:	ld b,6
 c1:	ld a,(hl)
-	out (0xeb),a
+	out (SPI),a
 	inc hl
 	djnz c1
 	ld b,8
-c2:	in a,(0xeb)
+c2:	in a,(SPI)
 	ld (de),a
 	inc de
 	djnz c2

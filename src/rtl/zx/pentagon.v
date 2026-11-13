@@ -27,6 +27,11 @@
  waits on an access of #EB while an exchange is running or the emulated card waits for the MCU
  (sd_wait).
 
+ Z-Controller (always on, with the DivMMC on or off): the same SPI master and card select. Port #57 as #EB (a write
+ sends the byte, a read gives the byte of the exchange before and sends FF); a write of #77 sets the card select
+ from bit 1 (0 selected; bit 0, the power of the card, is not used); a read of #77 gives FC (bit 0 a card is in,
+ bit 1 not write protected). Ports by A7..A0 (as karabas-go-core-profi).
+
  CPU memory cycles. The T80 takes the data of a read at the CPU clock that ends T2 (the opcode of
  M1 too), one T-state after its RD_n would go low (T80se). The request to the SDRAM is made at the
  start of T1 from the state of the T80 (MC / TS / Write / NoRead / IORQ), so the access has two
@@ -297,6 +302,10 @@ wire is_rom = map_ro;
 wire dv_port_e3 = divmmc_en && cpu_a[7:0] == 8'hE3;
 wire dv_port_e7 = divmmc_en && cpu_a[7:0] == 8'hE7;
 wire dv_port_eb = divmmc_en && cpu_a[7:0] == 8'hEB;
+// Z-Controller: #57 the SPI data (as #EB), #77 the card select
+wire zc_port_57 = cpu_a[7:0] == 8'h57;
+wire zc_port_77 = cpu_a[7:0] == 8'h77;
+wire spi_port = dv_port_eb | zc_port_57;
 
 // keyboard columns of the selected rows
 reg [4:0] kb_col;
@@ -326,8 +335,10 @@ assign ay_rd = ay_ram[ay_ra];
 
 reg [7:0] port_q;
 always @* begin
-	if (dv_port_eb)
+	if (spi_port)
 		port_q = io_done ? eb_q : spi_in;
+	else if (zc_port_77)
+		port_q = 8'hFC;
 	else if (!cpu_a[0])
 		port_q = {1'b1, tape_in, 1'b1, kb_col};
 	else if (fdc_cs || fdc_csff)
@@ -481,7 +492,7 @@ reg [4:0] spi_cnt = 5'd0;     // 4 clocks per bit, 8 bits
 reg spi_busy = 1'b0;
 reg [7:0] spi_sr = 8'hFF;
 reg io_done = 1'b0;           // the #EB access of this M-cycle is made
-wire eb_cycle = dv_port_eb & ~m1_cycle & cpu_iorq;
+wire eb_cycle = spi_port & ~m1_cycle & cpu_iorq;   // #EB of the DivMMC or #57 of the Z-Controller
 // the CPU waits only before the exchange of this access starts (the one before is still running, or the emulated
 // card waits for the MCU); not for its own exchange: an IN gives the byte of the exchange before it (DivMMC).
 // Waiting for its own exchange (the automatic TW of the I/O cycle) made the IN return the byte of the exchange it
@@ -504,13 +515,11 @@ always @(posedge clk) begin
 		dv_bank <= 6'd0;
 		dv_automap <= 1'b0;
 		dv_detect <= 1'b0;
-		spi_cs_n <= 1'b1;
 	end else if (reset) begin
 		if (nmi) begin
 			dv_conmem <= 1'b0;
 			dv_mapram <= 1'b0;
 			dv_bank <= 6'd0;
-			spi_cs_n <= 1'b1;
 		end
 	end else begin
 		// automap: an opcode fetch of an entry point sets detect, of 1FF8-1FFF clears it, of 3Dxx maps at once;
@@ -532,15 +541,28 @@ always @(posedge clk) begin
 				dv_mapram <= dv_mapram | cpu_do[6];
 				dv_bank <= cpu_do[5:0];
 			end
-			if (dv_port_e7)
-				spi_cs_n <= cpu_do[0];
 		end
 	end
 end
 
-// the SPI exchanges: cleared with the machine
+// the card select: #E7 bit 0 (DivMMC) or #77 bit 1 (Z-Controller); high at power on and at a reset with NMI held,
+// kept over a plain reset (as the state of the DivMMC); not cleared with the DivMMC off (the Z-Controller has it)
+always @(posedge clk)
+	if (areset)
+		spi_cs_n <= 1'b1;
+	else if (reset) begin
+		if (nmi)
+			spi_cs_n <= 1'b1;
+	end else if (cen_d && cpu_ts == 3'd2 && !wr_done && io_wr) begin
+		if (dv_port_e7)
+			spi_cs_n <= cpu_do[0];
+		if (zc_port_77)
+			spi_cs_n <= cpu_do[1];
+	end
+
+// the SPI exchanges (DivMMC and Z-Controller): cleared with the machine
 always @(posedge clk) begin
-	if (reset || !divmmc_en) begin
+	if (reset) begin
 		spi_busy <= 1'b0;
 		spi_sck <= 1'b0;
 		spi_mosi <= 1'b1;
