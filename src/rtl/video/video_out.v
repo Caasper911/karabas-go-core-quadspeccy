@@ -124,8 +124,6 @@ wire [1:0] qm = {qrow, col};
 assign q_addr = {sy[0], hq[7:3]};
 assign q_brd_addr = vq;
 
-wire [15:0] q_word = q_words[qm*16 +: 16];
-wire [2:0] q_brd = q_brds[qm*3 +: 3];
 
 // the request of the next line, at the start of a line of the picture
 wire [9:0] sy_n = (sy == 10'd639) ? 10'd0 : sy + 1'd1;
@@ -142,17 +140,19 @@ always @(posedge clk) begin
 end
 
 reg qa_vis = 1'b0, qa_paper = 1'b0, qa_rim = 1'b0, qa_absent = 1'b0;
-reg [15:0] qa_word = 16'd0;
-reg [2:0] qa_brd = 3'd0;
+reg [1:0] qa_m = 2'd0;
 reg [2:0] qa_bit = 3'd0;
+// q_words / q_brds come from the block RAMs of the machines, one clock after q_addr / q_brd_addr: the word of
+// stage a, taken from the machine of stage a
+wire [15:0] qa_word = q_words[qa_m*16 +: 16];
+wire [2:0] qa_brd = q_brds[qa_m*3 +: 3];
 
 always @(posedge clk) begin
 	qa_vis <= q_vis;
 	qa_paper <= (hq < 9'd256) && (vq < 9'd192);
 	qa_rim <= (qm == sel) && (xq < 9'd2 || xq >= 9'd382 || yq < 9'd2 || yq >= 9'd302);
 	qa_absent <= (qm >= NUM_MACHINES);
-	qa_word <= q_word;
-	qa_brd <= q_brd;
+	qa_m <= qm;
 	qa_bit <= hq[2:0];
 end
 

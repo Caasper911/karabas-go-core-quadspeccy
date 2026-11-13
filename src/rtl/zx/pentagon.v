@@ -604,8 +604,17 @@ reg [5:0] qk = 6'd32;           // column being fetched, 32: none
 reg [7:0] q_line = 8'd0;
 reg q_b = 1'b0;
 reg [7:0] q_bmp = 8'd0;
-reg [15:0] qbuf [0:63];
-assign q_word = qbuf[q_addr];
+// the line buffer of the quad view: block RAM (RAMB8), read one clock after q_addr (as the register of video_out
+// it replaces); written by the fetch below
+(* ram_style = "block" *) reg [15:0] qbuf [0:63];
+reg [15:0] q_word_r = 16'd0;
+assign q_word = q_word_r;
+wire q_we = ~reset & quad & ~q_go & fst[1] & ~b_busy;   // the default branch of the fetch: the attribute is there
+always @(posedge clk) begin
+	if (q_we)
+		qbuf[{q_b, qk[4:0]}] <= {q_bmp, b_q};
+	q_word_r <= qbuf[q_addr];
+end
 
 wire [12:0] qbmp_off = {q_line[7:6], q_line[2:0], q_line[5:3], qk[4:0]};
 wire [12:0] qatr_off = {3'b110, q_line[7:3], qk[4:0]};
@@ -637,8 +646,7 @@ always @(posedge clk) begin
 					fst <= 2'd2;
 				end
 				default: if (!b_busy) begin
-					qbuf[{q_b, qk[4:0]}] <= {q_bmp, b_q};
-					qk <= qk + 1'd1;
+					qk <= qk + 1'd1;   // the word goes into qbuf (q_we)
 					fst <= 2'd0;
 				end
 			endcase
@@ -674,11 +682,15 @@ always @(posedge clk) begin
 end
 
 // the border of each native line, for the quad view
-reg [2:0] brd_mem [0:511];
-assign q_brd = brd_mem[q_brd_addr];
-always @(posedge clk)
+// (block RAM as qbuf, read one clock after q_brd_addr)
+(* ram_style = "block" *) reg [2:0] brd_mem [0:511];
+reg [2:0] q_brd_r = 3'd0;
+assign q_brd = q_brd_r;
+always @(posedge clk) begin
 	if (ce7 && hc == 9'd128)
 		brd_mem[vc] <= border;
+	q_brd_r <= brd_mem[q_brd_addr];
+end
 
 // ---------------------------------------------------------------------------------------------
 // pixels: stage 1 loads / shifts, stage 2 makes the colour

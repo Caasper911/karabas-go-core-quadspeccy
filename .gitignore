@@ -44,3 +44,4 @@ src/sim/*.log
 src/sim/work_q/
 src/sim/work_c/
 src/sim/work_ay/
+src/sim/work_v/
