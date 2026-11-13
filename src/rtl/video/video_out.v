@@ -14,17 +14,22 @@
  pix is the colour of the pixel hc / vc of two ce7 before (pentagon.v), so it is written at the
  position of hc / vc delayed by two ce7.
 
- Quad view (full = 0): four quadrants at 21 MHz, scale 4/3 (docs/QUAD_SCALE.md, variant B): this module makes
- the pixels of the next VGA row on clk_bus into the row buffer of video_px.v, which shows them at clk_sys / 4.
- Machine 2 * row + column. A paper line comes from the line buffer of its machine, read from the SDRAM during the
- VGA row before the one that makes it (q_go); the border has the colour of that native line (taken by the
- machine). The selected machine has a frame (colour in video_px), the machines that are not built are grey. The
- picture of the quad view is the screen memory at the time of the fetch, not the beam of the machine:
- multicolour and border effects are not exact there. r, g, b, hs, vs: the full screen (and the syncs of both).
+ Quad view (full = 0): the visible part of the raster, 736 clocks x 576 lines, holds four quadrants of
+ 368 x 288: the visible picture of the full screen (56 + 256 + 56 pixels, 48 + 192 + 48 lines), one
+ pixel per clock of 28 MHz and one line per VGA line, half the size of the full screen in both
+ directions. Machine 2 * row + column. A paper line comes from the line buffer of its machine, read
+ from the SDRAM during the VGA line before it (q_go); the border has the colour of that native line
+ (taken by the machine). The selected machine has a frame of rim_col (OSD), the machines that are not built
+ are grey. The picture of the quad view is the screen memory at the time of the fetch, not the beam
+ of the machine: multicolour and border effects are not exact there.
 
- VGA (vga_x 0..447 at 14 MHz, dl the native line shown):
-   vga_x 0..255 paper, 256..319 right border, 320..383 blank (hsync 328..375), 384..447 left border
-   dl 240..255 blank, vsync in 242..243 (4 VGA lines); both syncs low active
+ VGA (vga_x 0..447 at 14 MHz, dl the native line shown), the porches of 720 x 576 p50: monitors take the black level
+ at the start of the back porch; with the 16 clocks of before (0.57 us) some of them took the colour of the border
+ there and lit the picture (found on monitors):
+   vga_x 0..255 paper, 256..311 right border, 312..391 blank: front porch 312..319 (16 clocks, 0.57 us), hsync
+   320..351 (64, 2.3 us), back porch 352..391 (80, 2.9 us); 392..447 left border (56 + 256 + 56 visible, 736 clocks)
+   dl 0..191 paper, 192..239 bottom border, 240..271 blank (vsync in 242..243: 4 + 4 + 56 VGA lines), 272..319 top
+   border (48 + 192 + 48 visible, 576 VGA lines); both syncs low active
 */
 
 module video_out #(
@@ -44,8 +49,8 @@ module video_out #(
 
 	// mode: 1 the selected machine full screen, 0 the quad view; sel the selected machine
 	input wire full,
-	input wire narrow,            // quad view: 1 the border of 16 / 18 at 21 MHz, 0 the whole border at 28 MHz
 	input wire [1:0] sel,
+	input wire [2:0] rim_col,     // colour of the frame of the selected machine {G, R, B}, bright
 
 	input wire [3:0] pix,
 
@@ -58,13 +63,6 @@ module video_out #(
 	input wire [4*16-1:0] q_words,
 	output wire [8:0] q_brd_addr,
 	input wire [4*3-1:0] q_brds,
-	// the row buffer of video_px (written here), the rows it shows
-	output wire pb_we,
-	output wire [10:0] pb_addr,
-	output wire [4:0] pb_d,
-	output reg qs_start = 1'b0,
-	output reg qs_par = 1'b0,
-	output reg qs_vis = 1'b0,
 
 	// diagnostics: five squares (8 VGA pixels x 16 VGA lines) in the left border of the top border lines
 	// 264..271, x 388 + 12 * i: square i < 4 green when diag_ok[i], red when not; square 4 blinks white with
@@ -108,132 +106,96 @@ kg_sdpram #(.DW(4), .AW(10)) linebuf (
 wire [8:0] dl = (vc == 9'd0) ? 9'd319 : vc - 1'd1;
 
 // ---------------------------------------------------------------------------------------------
-// quad view: two borders (OSD "Quad border", input narrow)
-//
-// narrow = 1, scale 4/3 (docs/QUAD_SCALE.md, variant B): pixels of 21.02 MHz = clk_sys / 4 (video_px.v), 576 x 608,
-// quadrant 288 x 304 of 288 x 228 Spectrum pixels (16 + 256 + 16, 18 + 192 + 18), a native line on 4 / 3 VGA lines
-// (src = yq * 3 / 4). narrow = 0, scale 1: pixels of 28.03 MHz = clk_sys / 3, 768 x 608, quadrant 384 x 304, the
-// whole visible Pentagon (64 + 256 + 64, 64 + 192 + 48), a native line on a VGA line.
-// Here, on clk_bus, the pixels of the next VGA row are made one a clock (rx 0..575 / 767) into the row buffer of
-// video_px (pb_*, two rows, a 5-bit code: 0 + {bright, G, R, B}, 10000 frame, 10001 absent). The paper line of a
-// row comes from the line buffer of its machine (qbuf, filled during the row before: q_go two rows ahead, only
-// when the native line changes).
-//
-// Rows: sy 0..607 the picture (row 0 = line 512 of the doubled raster), a row starts at vga_p 768 (qx 0).
+// quad view
 
-// the doubled line shown (full screen: 2 * dl + half) and the row: from vga_p 768 (after the back porch) the next
+// the doubled line shown (full screen: 2 * dl + half) and the screen position: q from the left edge of
+// the picture (after the back porch, p 784), sy from its top (line 544 = 2 * dl 272, the first visible line of the top
+// border); the picture is the visible part of the raster, 736 x 576, four quadrants of 368 x 288 (56 + 256 + 56,
+// 48 + 192 + 48: the border of the full screen)
 wire [9:0] ld = (vga_l < 10'd2) ? vga_l + 10'd638 : vga_l - 10'd2;
-wire [9:0] row = (vga_p >= 10'd768) ? ((ld == 10'd639) ? 10'd0 : ld + 1'd1) : ld;
-wire [9:0] sy = (row >= 10'd512) ? row - 10'd512 : row + 10'd128;
-wire [9:0] qx = (vga_p >= 10'd768) ? vga_p - 10'd768 : vga_p + 10'd128;
-wire [9:0] sy1 = (sy == 10'd639) ? 10'd0 : sy + 1'd1;    // the row made now
-wire [9:0] sy2 = (sy1 == 10'd639) ? 10'd0 : sy1 + 1'd1;  // the row fetched now
+wire [9:0] row = (vga_p >= 10'd784) ? ((ld == 10'd639) ? 10'd0 : ld + 1'd1) : ld;
+wire [9:0] sy = (row >= 10'd544) ? row - 10'd544 : row + 10'd96;
+wire [9:0] qx = (vga_p >= 10'd784) ? vga_p - 10'd784 : vga_p + 10'd112;
 
-// a row y: its quadrant row, line in the quadrant, native line (vq: 0..191 paper, then the bottom border; the
-// top border 302..319 narrow, 256..319 normal)
-function [8:0] yq_of;
-	input [9:0] y;
-	yq_of = (y >= 10'd304) ? y - 10'd304 : y[8:0];
-endfunction
-function [8:0] vq_of;
-	input [9:0] y;
-	input nar;
-	reg [8:0] yq;
-	reg [10:0] t;
-	reg [8:0] src, top;
-	begin
-		yq = yq_of(y);
-		t = {2'b00, yq} * 2'd3;
-		src = nar ? t[10:2] : yq;
-		top = nar ? 9'd18 : 9'd64;
-		vq_of = (src < top) ? src + 9'd320 - top : src - top;
-	end
-endfunction
+wire q_vis = (qx < 10'd736) && (sy < 10'd576);
+wire col = (qx >= 10'd368);
+wire qrow = (sy >= 10'd288);
+wire [8:0] xq = col ? qx - 10'd368 : qx[8:0];
+wire [8:0] yq = qrow ? sy - 10'd288 : sy[8:0];
+// the native position of the pixel
+wire [8:0] hq = (xq < 9'd56) ? xq + 9'd392 : xq - 9'd56;
+wire [8:0] vq = (yq < 9'd48) ? yq + 9'd272 : yq - 9'd48;
+wire [1:0] qm = {qrow, col};
 
-wire [8:0] vq1 = vq_of(sy1, narrow);
-wire [8:0] vq2 = vq_of(sy2, narrow);
-wire [8:0] yq1 = yq_of(sy1);
+assign q_addr = {sy[0], hq[7:3]};
+assign q_brd_addr = vq;
 
-// fetch: at the start of row sy the paper line of row sy + 2, if it is another than that of row sy + 1
+
+// the request of the next line, at the start of a line of the picture
+wire [9:0] sy_n = (sy == 10'd639) ? 10'd0 : sy + 1'd1;
+wire [8:0] yq_n = (sy_n >= 10'd288) ? sy_n - 10'd288 : sy_n[8:0];
+wire [8:0] vq_n = (yq_n < 9'd48) ? yq_n + 9'd272 : yq_n - 9'd48;
+
 always @(posedge clk) begin
 	q_go <= 2'b00;
-	if (!full && vga_p == 10'd768 && sy2 < 10'd608 && vq2 < 9'd192 &&
-			(sy2 == 10'd0 || sy2 == 10'd304 || vq2 != vq1)) begin
-		q_go <= (sy2 >= 10'd304) ? 2'b10 : 2'b01;
-		q_vc <= vq2[7:0];
-		q_buf <= vq2[0];
+	if (!full && vga_p == 10'd784 && sy_n < 10'd576 && vq_n < 9'd192) begin
+		q_go <= (sy_n >= 10'd288) ? 2'b10 : 2'b01;
+		q_vc <= vq_n[7:0];
+		q_buf <= sy_n[0];
 	end
 end
 
-// make row sy1: pixel rx = qx (0..575 narrow, 0..767 normal); quadrant width qw, left border bl
-wire [9:0] qw = narrow ? 10'd288 : 10'd384;
-wire [8:0] bl = narrow ? 9'd16 : 9'd64;
-wire r_on = (qx < {qw[8:0], 1'b0}) && (sy1 < 10'd608);
-wire col = (qx >= qw);
-wire [8:0] xq = col ? qx - qw : qx[8:0];
-wire [8:0] hq = xq - bl;                          // the native pixel of the paper
-wire [1:0] qm = {sy1 >= 10'd304, col};
-
-assign q_addr = {vq1[0], hq[7:3]};
-assign q_brd_addr = vq1;
-
-reg ra_on = 1'b0, ra_paper = 1'b0, ra_rim = 1'b0, ra_absent = 1'b0, ra_par = 1'b0;
-reg [9:0] ra_x = 10'd0;
-reg [1:0] ra_m = 2'd0;
-reg [2:0] ra_bit = 3'd0;
+reg qa_vis = 1'b0, qa_paper = 1'b0, qa_rim = 1'b0, qa_absent = 1'b0;
+reg [1:0] qa_m = 2'd0;
+reg [2:0] qa_bit = 3'd0;
+// q_words / q_brds come from the block RAMs of the machines, one clock after q_addr / q_brd_addr: the word of
+// stage a, taken from the machine of stage a
+wire [15:0] qa_word = q_words[qa_m*16 +: 16];
+wire [2:0] qa_brd = q_brds[qa_m*3 +: 3];
 
 always @(posedge clk) begin
-	ra_on <= r_on && !full;
-	ra_x <= qx;
-	ra_par <= sy1[0];
-	ra_paper <= (vq1 < 9'd192) && (xq >= bl) && (xq < bl + 9'd256);
-	ra_rim <= (qm == sel) && (xq < 9'd2 || xq >= qw[8:0] - 9'd2 || yq1 < 9'd2 || yq1 >= 9'd302);
-	ra_absent <= (qm >= NUM_MACHINES);
-	ra_m <= qm;
-	ra_bit <= hq[2:0];
+	qa_vis <= q_vis;
+	qa_paper <= (hq < 9'd256) && (vq < 9'd192);
+	qa_rim <= (qm == sel) && (xq < 9'd2 || xq >= 9'd366 || yq < 9'd2 || yq >= 9'd286);
+	qa_absent <= (qm >= NUM_MACHINES);
+	qa_m <= qm;
+	qa_bit <= hq[2:0];
 end
 
-// q_words / q_brds: the block RAMs of the machines, one clock after q_addr / q_brd_addr
-wire [15:0] ra_word = q_words[ra_m*16 +: 16];
-wire [2:0] ra_brd = q_brds[ra_m*3 +: 3];
-wire ra_ink = ra_word[15 - ra_bit] ^ (ra_word[7] & flash);
-wire [3:0] ra_pix = ra_paper ? (ra_ink ? {ra_word[6], ra_word[2:0]} : {ra_word[6], ra_word[5:3]}) : {1'b0, ra_brd};
+wire qa_ink = qa_word[15 - qa_bit] ^ (qa_word[7] & flash);
+wire [3:0] q_pix = qa_paper ? (qa_ink ? {qa_word[6], qa_word[2:0]} : {qa_word[6], qa_word[5:3]}) : {1'b0, qa_brd};
 
-assign pb_we = ra_on;
-assign pb_addr = {ra_par, ra_x};
-assign pb_d = ra_rim ? 5'b10000 : ra_absent ? 5'b10001 : {1'b0, ra_pix};
-
-// to video_px: the start of a row (qx 0), the parity of the row shown, whether it is in the picture
-always @(posedge clk) begin
-	qs_start <= (qx == 10'd0);
-	qs_par <= sy[0];
-	qs_vis <= (sy < 10'd608);
-end
-
-wire [3:0] c_pix = lb_q;
+// the colour of the line buffer (full) or of the quad view
+wire [3:0] c_pix = full ? lb_q : q_pix;
 
 reg blank_a = 1'b1, hs_a = 1'b1, vs_a = 1'b1;
 reg diag_a = 1'b0;
 reg [2:0] diag_i = 3'd0;
-wire diag_line = diag_en && dl >= 9'd264 && dl < 9'd272;
+wire diag_line = diag_en && dl >= 9'd272 && dl < 9'd280;
 
 always @(posedge clk) begin
 	// stage a: the address goes into the line buffer, the syncs of the same position
-	blank_a <= (vga_x >= 9'd320 && vga_x < 9'd384) || (dl >= 9'd240 && dl < 9'd256);
-	hs_a <= ~(vga_x >= 9'd328 && vga_x < 9'd376);
+	// lines: by the rows of the picture (sy, from the left border at vga_x 392), as the quad view; with dl (which
+	// changes at vga_x 0) the first visible line had no left border and the one after the last had it
+	blank_a <= (vga_x >= 9'd312 && vga_x < 9'd392) || (sy >= 10'd576);
+	hs_a <= ~(vga_x >= 9'd320 && vga_x < 9'd352);
 	vs_a <= ~(dl == 9'd242 || dl == 9'd243);
 	diag_a <= 1'b1;
-	if (diag_line && vga_x >= 9'd388 && vga_x < 9'd396) diag_i <= 3'd0;
-	else if (diag_line && vga_x >= 9'd400 && vga_x < 9'd408) diag_i <= 3'd1;
-	else if (diag_line && vga_x >= 9'd412 && vga_x < 9'd420) diag_i <= 3'd2;
+	if (diag_line && vga_x >= 9'd394 && vga_x < 9'd402) diag_i <= 3'd0;
+	else if (diag_line && vga_x >= 9'd404 && vga_x < 9'd412) diag_i <= 3'd1;
+	else if (diag_line && vga_x >= 9'd414 && vga_x < 9'd422) diag_i <= 3'd2;
 	else if (diag_line && vga_x >= 9'd424 && vga_x < 9'd432) diag_i <= 3'd3;
-	else if (diag_line && vga_x >= 9'd436 && vga_x < 9'd444) diag_i <= 3'd4;
+	else if (diag_line && vga_x >= 9'd434 && vga_x < 9'd442) diag_i <= 3'd4;
 	else diag_a <= 1'b0;
 
 	// stage b: the colour
 	hs <= hs_a;
 	vs <= vs_a;
 	if (blank_a) begin
+		r <= 8'd0;
+		g <= 8'd0;
+		b <= 8'd0;
+	end else if (!full && !qa_vis) begin
 		r <= 8'd0;
 		g <= 8'd0;
 		b <= 8'd0;
@@ -247,6 +209,14 @@ always @(posedge clk) begin
 			g <= diag_ok[diag_i[1:0]] ? 8'hFF : 8'h00;
 			b <= 8'h00;
 		end
+	end else if (!full && qa_rim) begin
+		r <= rim_col[1] ? 8'hFF : 8'h00;
+		g <= rim_col[2] ? 8'hFF : 8'h00;
+		b <= rim_col[0] ? 8'hFF : 8'h00;
+	end else if (!full && qa_absent) begin
+		r <= 8'h30;
+		g <= 8'h30;
+		b <= 8'h30;
 	end else begin
 		r <= c_pix[1] ? (c_pix[3] ? 8'hFF : 8'hCA) : 8'd0;
 		g <= c_pix[2] ? (c_pix[3] ? 8'hFF : 8'hCA) : 8'd0;

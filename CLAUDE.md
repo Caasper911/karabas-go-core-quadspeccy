@@ -68,12 +68,11 @@ in the same change as the code they describe.
 - `rtl/zx/zx_timing.v`: one Pentagon raster for all machines (lock step). `rtl/zx/pentagon.v`: one machine: T80
   instantiated directly (the T80se bus logic is in the wrapper) so the SDRAM read starts at T1; WAIT_n is only a
   safety net (`late`). Video fetch through channel B at most 12 pixels ahead.
-- `rtl/video/video_out.v`: scan doubler to 896 x 640 at 28 MHz (the 50 Hz VGA raster of TS-Conf, so the OSD
-  offsets 120 / 72 fit). Quad view, OSD "Quad border" (soft switch 19): Narrow at scale 4/3, pixels of 21 MHz =
-  clk_sys / 4, or Normal at scale 1, 28 MHz = clk_sys / 3; `video_out` makes the next VGA row on
-  clk_bus (paper from the `qbuf` of the machines, a line fetched two rows ahead) into the row buffer of
-  `rtl/video/video_px.v`, the last stage on clk_sys (`ce_px` = ce28 full screen / ce21 quad, `V_CLK`, the OSD with
-  `CE_IN` of `kg_osd_overlay`: branch `osd-ce` of the submodule). `src/sim/run_vpx.sh` checks every pixel.
+- `rtl/video/video_out.v`: scan doubler to 896 x 640 at 28 MHz (the 50 Hz VGA raster of TS-Conf), blanking as 720 x
+  576p50: visible 736 x 576, back porch 80 clocks (16 lit the picture on some monitors: black level clamp); the OSD
+  centred (offsets 96 / 68). Quad view: quadrants 368 x 288, a VGA-timed line fetch per machine into `qbuf` (block
+  RAM, read one clock after `q_addr`, as `brd_mem`), not a frame buffer; `src/sim/run_vpx.sh` checks every pixel.
+  (Scale 4/3 at 21 MHz was tried, branch `quad-scale` history: looked bad, removed.)
 - `rtl/hid/zx_kbd.v`: HID report to the ZX matrix, Win+1..4 / Win+` hotkeys.
 - TurboSound (AY only, no YM): each `pentagon` keeps the 32 registers of its two AY (distributed RAM, ports
   `#FFFD` / `#BFFD`, chip select by writing `FF` / `FE` to `#FFFD`); only two generators `rtl/sound/ay_psg.v` in the top,

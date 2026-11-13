@@ -188,9 +188,8 @@ BUFG bufg_clk_bus(.I(pll_clk[1]), .O(clk_bus));
 wire areset = ~locked;
 
 // V_CLK of the video DAC (TS-Conf bus_ce)
-// (ce_28m: the pixels of the full screen in video_px; V_CLK comes from video_px, 28 or 21 MHz)
-wire ce_28m, ce_28m_n;
-bus_ce bus_ce(.clk_sys(clk_sys), .clk_bus(clk_bus), .ce(ce_28m), .ce_n(ce_28m_n), .v_clk());
+wire ce_28m, v_clk;
+bus_ce bus_ce(.clk_sys(clk_sys), .clk_bus(clk_bus), .ce(ce_28m), .v_clk(v_clk));
 
 // ---------------------------------------------------------------------------------------------
 // MCU
@@ -315,8 +314,8 @@ assign FT_OE_N = mcu_ft_vga_on ? 1'b0 : 1'b1;
 // soft switches
 
 // 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image)
-wire [20*8-1:0] softsw;
-kg_soft_switches #(.N(20), .INIT(160'h01_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
+wire [19*8-1:0] softsw;
+kg_soft_switches #(.N(19), .INIT(152'h00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
 	.clk(clk_bus),
 	.command(softsw_command),
 	.regs(softsw),
@@ -332,7 +331,6 @@ wire [2:0] sw_frame_col = softsw[42:40];
 wire sw_nmi = softsw[48];
 wire [3:0] sw_divmmc = {softsw[13*8], softsw[11*8], softsw[9*8], softsw[7*8]};
 wire [3:0] sw_sd_img = {softsw[14*8], softsw[12*8], softsw[10*8], softsw[8*8]};
-wire sw_narrow = softsw[19*8];   // quad view: 1 border 16 / 18 at 21 MHz (scale 4/3), 0 the whole border at 28 MHz
 wire [3:0] sw_acb = {softsw[18*8], softsw[17*8], softsw[16*8], softsw[15*8]};   // AY mix of machine n: 0 ABC, 1 ACB
 
 // ---------------------------------------------------------------------------------------------
@@ -756,12 +754,8 @@ endgenerate
 // ---------------------------------------------------------------------------------------------
 // video
 
-wire [7:0] video_r, video_g, video_b, px_r, px_g, px_b, osd_r, osd_g, osd_b;
-wire video_hs, video_vs, px_hs, px_vs;
-wire pb_we, qs_start, qs_par, qs_vis;
-wire [10:0] pb_addr;
-wire [4:0] pb_d;
-wire ce_px, v_clk;
+wire [7:0] video_r, video_g, video_b, osd_r, osd_g, osd_b;
+wire video_hs, video_vs;
 
 video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.clk(clk_bus),
@@ -777,8 +771,8 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.vga_l(vga_l),
 	.flash(frame[4]),
 	.full(full),
-	.narrow(sw_narrow),
 	.sel(sel),
+	.rim_col(sw_frame_col),
 	.pix(m_pix[sel*4 +: 4]),
 	.q_go(q_go),
 	.q_vc(q_vc),
@@ -787,12 +781,6 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.q_words(q_words),
 	.q_brd_addr(q_brd_addr),
 	.q_brds(q_brds),
-	.pb_we(pb_we),
-	.pb_addr(pb_addr),
-	.pb_d(pb_d),
-	.qs_start(qs_start),
-	.qs_par(qs_par),
-	.qs_vis(qs_vis),
 	// diagnostics of the selected machine (docs/PLAN.md): SDRAM ready, ROM loader done, reads non-zero, no late
 	.diag_en(1'b1),
 	.diag_ok({~m_late[sel], m_nz[sel], ~ld_hold & ~ld_ovf, sdram_ready_b}),
@@ -804,55 +792,24 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.vs(video_vs)
 );
 
-// the last stage on clk_sys: full screen at 28 MHz, the quad view at 21 MHz (scale 4/3, docs/QUAD_SCALE.md)
-video_px vpx(
-	.clk_sys(clk_sys),
-	.ce28(ce_28m),
-	.ce28_n(ce_28m_n),
-	.full(full),
-	.narrow(sw_narrow),
-	.r_i(video_r),
-	.g_i(video_g),
-	.b_i(video_b),
-	.hs_i(video_hs),
-	.vs_i(video_vs),
-	.clk_bus(clk_bus),
-	.pb_we(pb_we),
-	.pb_addr(pb_addr),
-	.pb_d(pb_d),
-	.qs_start(qs_start),
-	.qs_par(qs_par),
-	.qs_vis(qs_vis),
-	.rim_col(sw_frame_col),
-	.ce_px(ce_px),
-	.v_clk(v_clk),
-	.r(px_r),
-	.g(px_g),
-	.b(px_b),
-	.hs(px_hs),
-	.vs(px_vs)
-);
-
-// the OSD on the pixels (CE_IN): steps of 2 pixels; full screen and quad with the whole border 448 steps a line,
-// offset 120 (TS-Conf); quad narrow 336, the picture from step 6 (16 clk_bus after the end of hsync), 288 steps: the
-// 256 of the OSD in the middle at 22
-kg_osd_overlay #(.H_OFFSET(120), .V_OFFSET(72), .H_OFFSET_IN(1), .CE_IN(1)) overlay(
-	.clk(clk_sys),
-	.ce(ce_px),
-	.rgb_i({px_r, px_g, px_b}),
+// the OSD in the middle of the picture (counted from the end of the syncs, steps of 2 clocks / 2 lines): the picture
+// from step 40 (vga_x 392), 368 steps wide: 96; from line step 28 (dl 272 after the vsync ending at 244), 288: 68
+kg_osd_overlay #(.H_OFFSET(96), .V_OFFSET(68)) overlay(
+	.clk(clk_bus),
+	.rgb_i({video_r, video_g, video_b}),
 	.rgb_o({osd_r, osd_g, osd_b}),
-	.hsync_i(px_hs),
-	.vsync_i(px_vs),
+	.hsync_i(video_hs),
+	.vsync_i(video_vs),
 	.v_offset(11'd0),
-	.h_offset((full || !sw_narrow) ? 11'd120 : 11'd22),
+	.h_offset(11'd0),
 	.osd_command(osd_command)
 );
 
 assign VGA_R = osd_r;
 assign VGA_G = osd_g;
 assign VGA_B = osd_b;
-assign VGA_HS = px_hs;
-assign VGA_VS = px_vs;
+assign VGA_HS = video_hs;
+assign VGA_VS = video_vs;
 assign V_CLK = v_clk;
 
 // ---------------------------------------------------------------------------------------------
