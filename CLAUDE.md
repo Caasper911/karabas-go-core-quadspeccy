@@ -109,7 +109,7 @@ in the same change as the code they describe.
   `karabas_{go,mini,minig}_top.v` put it on the pins (as `kg_osca_system` of karabas_go_v6z80p). Pins of the Mini /
   Mini G ucf from karabas-go-core-tsconf, the timing block the same in the three. Go: VGA + PCM5102 + FDC. Mini:
   HDMI (`rtl/video/hdmi_out.v`: pixel clock = clk_bus, `kg_dcm` x5, `hdmi_tx` INPUT_REG 1, 48 kHz), sigma-delta,
-  FT_CLK_OUT 8 MHz (the FT812 needs it). Mini G: PCM5102, MCU_SCK IBUFG + BUFG (burst 32 MHz), FT_SPI_SCK from
+  FT_CLK_OUT 8 MHz (the FT812 needs it). Mini G: PCM5102 with `DIV_BITS` 2 (55 kHz as tsconf; 1 as Go is silent), MCU_SCK IBUFG + BUFG (burst 32 MHz), FT_SPI_SCK from
   before the BUFG. OSD "FDD" has `"boards": ["go"]`.
 - `quadspeccy.v`: `NUM_MACHINES` (4), ROM loader FIFO (MCU address bits 17..16 = machine, 15..0 = offset in
   the ROM area at 0x20000 of its bank), soft switches in the order of `core.json` "osd".

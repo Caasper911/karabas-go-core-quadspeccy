@@ -199,8 +199,8 @@ hdmi_out hdmi(
 	.tmds_n(TMDS_N)
 );
 
-// sound: the PCM5102
-kg_pcm5102 #(.DIV_BITS(1)) pcm5102(
+// sound: the PCM5102 (DIV_BITS 2: BCK 3.5 MHz, 55 kHz, as tsconf; with 1 (109 kHz, as Go) the DAC of Mini G is silent)
+kg_pcm5102 #(.DIV_BITS(2)) pcm5102(
 	.clk(clk_bus),
 	.reset(areset),
 	.left(audio_l),

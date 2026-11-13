@@ -29,7 +29,7 @@ karabas_go_v6z80p): `karabas_go_top.v`, `karabas_mini_top.v`, `karabas_minig_top
 | | Go | Mini | Mini G |
 |---|---|---|---|
 | видео | VGA-ЦАП (`V_CLK`) | HDMI (`hdmi_out.v`) | HDMI |
-| звук | PCM5102 | sigma-delta `AUDIO_L/R` (1/4 шкалы, как TS-Conf) + HDMI | PCM5102 + HDMI |
+| звук | PCM5102 | sigma-delta `AUDIO_L/R` (1/4 шкалы, как TS-Conf) + HDMI | PCM5102 (BCK 3,5 МГц, 55 кГц, как TS-Conf; у Go 7 МГц) + HDMI |
 | дисковод / TR-DOS | есть (`ENABLE_FDC` 1) | нет (0) | нет (0) |
 | `MCU_SCK` | не на клоковом выводе | не на клоковом выводе | C9, IBUFG + BUFG, burst до 32 МГц |
 | MCU burst CS_N / READY | `MCU_SPI_IO[1]` / `[0]` | `MCU_IO[0]` / `[1]` | `MCU_IO[0]` / `[1]` |
