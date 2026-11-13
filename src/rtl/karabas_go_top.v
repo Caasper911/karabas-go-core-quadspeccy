@@ -26,7 +26,8 @@
 
  ROM loader: the MCU address bits 17..16 are the machine, 15..0 the offset in its ROM area
  (16 KB per ROM: 0 the 128 editor, 1 48 BASIC); the bytes go through a FIFO to channel A of the
- bank while the machines are held in reset.
+ bank while the machines are held in reset. OSD ROM 128 of machine n (FL item, slot 4 + n, autoload): the file
+ through the same FIFO to 0x30000 of its bank, only that machine held in reset; it then runs the ROM of the file.
 */
 
 module karabas_go_top #(
@@ -197,6 +198,11 @@ wire [31:0] loader_addr;
 wire [7:0] loader_data;
 wire loader_wr;
 wire mcu_busy;
+// the ioctl file loader (FL items of the OSD): ROM 128 of machine n from slot 4 + n
+wire fl_active, fl_reset;
+wire [31:0] fl_size, fl_addr;
+wire [7:0] fl_data, fl_slot;
+wire fl_wr;
 wire mcu_ft_spi_on, mcu_ft_vga_on, mcu_ft_sck, mcu_ft_mosi, mcu_ft_cs_n;
 wire mcu_burst_ready;
 // the file mounter (the images of the emulated SD cards, slot n = machine n)
@@ -225,7 +231,10 @@ kg_mcu #(
 	.ENABLE_MATRIX(0),
 	.ENABLE_DEBUG(0),
 	.ENABLE_IMG(1),
-	.ENABLE_FILE(0),
+	.ENABLE_FILE(1),
+	.FILE_CMDS(0),
+	.FILE_WR_EACH(1),
+	.FILE_TO_ROM(0),
 	.ENABLE_FT(1),
 	.ENABLE_SD2(0)
 ) mcu (
@@ -273,8 +282,8 @@ kg_mcu #(
 	.ROMLOAD_DATA(loader_data),
 	.ROMLOAD_WR(loader_wr),
 	.IOCTL_ACTIVE(),
-	.FILELOAD_RESET(), .FILELOAD_ACTIVE(), .FILELOAD_SIZE(), .FILELOAD_ADDR(), .FILELOAD_DATA(),
-	.FILELOAD_WR(),
+	.FILELOAD_RESET(fl_reset), .FILELOAD_ACTIVE(fl_active), .FILELOAD_SIZE(fl_size), .FILELOAD_ADDR(fl_addr),
+	.FILELOAD_DATA(fl_data), .FILELOAD_WR(fl_wr), .FILELOAD_SLOT(fl_slot),
 
 	.FT_SPI_ON(mcu_ft_spi_on),
 	.FT_VGA_ON(mcu_ft_vga_on),
@@ -427,7 +436,7 @@ reg [7:0] ld_din = 8'd0;
 reg [1:0] ld_bank = 2'd0;
 
 wire ld_fifo_empty;
-wire [25:0] ld_fifo_q;
+wire [26:0] ld_fifo_q;   // {machine, offset from 0x20000 (17 bits), byte}
 reg ld_fifo_rd = 1'b0;
 reg [1:0] ld_st = 2'd0;
 
@@ -436,11 +445,26 @@ reg [1:0] ld_st = 2'd0;
 // broken after the ports of sdram_ctrl went to clk_bus (a longer loop per byte).
 wire ld_fifo_full;
 reg ld_ovf = 1'b0;
-kg_fifo #(.DW(26), .AW(8)) ld_fifo(
+// ROM 128 from a file (OSD ROM 128 of machine n, FL item of slot 4 + n): the first 16 KB of the file go to 0x30000 of
+// the bank of machine n, in the place of the 128 ROM (the 48 ROM is always that of the core file); the ROMs of the
+// core file stay at 0x20000
+// a file from its IOCTL_SLOT (fl_reset) to its end: the start (IOCTL_STATE 1) comes before the slot, fl_slot is still
+// the one of the file before then (another machine)
+reg fl_go = 1'b0;
+always @(posedge clk_bus)
+	if (fl_reset)
+		fl_go <= 1'b1;
+	else if (!fl_active)
+		fl_go <= 1'b0;
+wire fl_ok = fl_go && fl_active && fl_slot[7:2] == 6'd1 && fl_slot[1:0] < NUM_MACHINES;
+wire [1:0] fl_m = fl_slot[1:0];
+wire ld_fifo_wr_rom = loader_wr && loader_act && loader_addr[31:18] == 14'd0;
+wire ld_fifo_wr_fl = fl_wr && fl_ok && fl_addr[31:14] == 18'd0;
+kg_fifo #(.DW(27), .AW(8)) ld_fifo(
 	.clk(clk_bus),
 	.reset(areset),
-	.wr(loader_wr && loader_act && loader_addr[31:18] == 14'd0),
-	.din({loader_addr[17:0], loader_data}),
+	.wr(ld_fifo_wr_rom | ld_fifo_wr_fl),
+	.din(ld_fifo_wr_fl ? {fl_m, 3'b100, fl_addr[13:0], fl_data} : {loader_addr[17:16], 1'b0, loader_addr[15:0], loader_data}),
 	.full(ld_fifo_full),
 	.rd(ld_fifo_rd),
 	.dout(ld_fifo_q),
@@ -451,7 +475,7 @@ kg_fifo #(.DW(26), .AW(8)) ld_fifo(
 // a bank is busy while the controller has not answered its request (the loader's, or the CPU's: one side only)
 wire [3:0] ld_busy = ld_req ^ a_ack ^ cpu_req;
 always @(posedge clk_bus)
-	if (loader_wr && loader_act && ld_fifo_full)
+	if ((ld_fifo_wr_rom || ld_fifo_wr_fl) && ld_fifo_full)
 		ld_ovf <= 1'b1;
 // the loader's own requests in flight: ld_busy alone also holds the CPU's requests, so ld_hold on it would
 // reset the machine at its first memory read (found on the board: the machine never ran)
@@ -490,28 +514,50 @@ always @(posedge clk_bus) begin
 		end
 		2'd1: ld_st <= 2'd2;   // dout is valid in the clock after rd
 		default: begin
-			ld_bank <= ld_fifo_q[25:24];
-			ld_addr <= {5'd0, 2'b10, ld_fifo_q[23:8]};
+			ld_bank <= ld_fifo_q[26:25];
+			ld_addr <= {5'd0, 1'b1, ld_fifo_q[24:8]};
 			ld_din <= ld_fifo_q[7:0];
-			if (!ld_busy[ld_fifo_q[25:24]]) begin
-				ld_req[ld_fifo_q[25:24]] <= ~ld_req[ld_fifo_q[25:24]];
-				ld_out[ld_fifo_q[25:24]] <= 1'b1;
+			if (!ld_busy[ld_fifo_q[26:25]]) begin
+				ld_req[ld_fifo_q[26:25]] <= ~ld_req[ld_fifo_q[26:25]];
+				ld_out[ld_fifo_q[26:25]] <= 1'b1;
 				ld_st <= 2'd0;
 			end
 		end
 	endcase
 end
 
-// the loader owns channel A while it has work (and the machines are in reset for it)
-wire ld_hold = loader_act | mcu_busy | ~ld_fifo_empty | (ld_st != 2'd0) | (|ld_out) | ~sdram_ready_b | clr_act;
+// the loader owns channel A while it has work (and the machines are in reset for it): ld_hold for all (the ROMs of
+// the core file, until the FIFO is empty; the start of the core; the clearing of the DivMMC RAM), fl_hold[n] for
+// machine n only while its ROM file is loaded (from the slot of the file until the FIFO is empty): the others run on.
+// A request of the CPU still in flight when the hold starts takes ld_addr / ld_din as a write: the last byte the
+// loader wrote, again at its own address (harmless).
+wire ld_work = ~ld_fifo_empty | (ld_st != 2'd0) | (|ld_out);
+reg rom_drain = 1'b0;
+reg [3:0] fl_hold = 4'b0000;
+reg [3:0] rom_file = 4'b0000;   // machine n: the 128 ROM from the file (0x30000)
+always @(posedge clk_bus) begin
+	if (loader_act)
+		rom_drain <= 1'b1;
+	else if (!ld_work)
+		rom_drain <= 1'b0;
+	if (fl_ok)
+		fl_hold[fl_m] <= 1'b1;
+	else if (!fl_active && !ld_work)
+		fl_hold <= 4'b0000;
+	// the end of a file: 16 KB or more is the 128 ROM; less (no file) the 128 ROM of the core file
+	if (fl_go && !fl_active && fl_slot[7:2] == 6'd1)
+		rom_file[fl_m] <= fl_size >= 32'd16384;
+end
+wire ld_hold = loader_act | rom_drain | mcu_busy | ~sdram_ready_b | clr_act;
 
 genvar gi;
 generate
 	for (gi = 0; gi < 4; gi = gi + 1) begin : g_cha
+		wire hold = ld_hold | fl_hold[gi];
 		assign a_req[gi] = cpu_req[gi] ^ ld_req[gi];
-		assign a_we[gi] = ld_hold ? 1'b1 : cpu_we[gi];
-		assign a_addr[gi*23 +: 23] = ld_hold ? ld_addr : cpu_addr[gi*23 +: 23];
-		assign a_din[gi*8 +: 8] = ld_hold ? ld_din : cpu_din[gi*8 +: 8];
+		assign a_we[gi] = hold ? 1'b1 : cpu_we[gi];
+		assign a_addr[gi*23 +: 23] = hold ? ld_addr : cpu_addr[gi*23 +: 23];
+		assign a_din[gi*8 +: 8] = hold ? ld_din : cpu_din[gi*8 +: 8];
 	end
 endgenerate
 
@@ -713,7 +759,7 @@ generate
 		if (gi < NUM_MACHINES) begin : g_on
 			reg m_reset = 1'b1;
 			always @(posedge clk_bus)
-				m_reset <= areset | ld_hold | sw_reset_all | hw_btn[1] | ((sw_reset | hw_btn[0]) && sel == gi);
+				m_reset <= areset | ld_hold | fl_hold[gi] | sw_reset_all | hw_btn[1] | ((sw_reset | hw_btn[0]) && sel == gi);
 			assign m_resets[gi] = m_reset;
 
 			pentagon #(.CPU(2)) m(
@@ -734,6 +780,7 @@ generate
 				.nmi(sw_nmi && sel == gi),
 				// power on for the DivMMC (a reset keeps its state): the start of the core and the ROM loading
 				.areset(areset | ld_hold),
+				.rom_file(rom_file[gi]),
 				.trdos_en(m_trdos_en[gi]),
 				.fdc_cs(m_fdc_cs[gi]),
 				.fdc_csff(m_fdc_csff[gi]),

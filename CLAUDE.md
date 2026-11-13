@@ -93,6 +93,9 @@ in the same change as the code they describe.
   `rtl/vg93/` copied from karabas-go-core-tsconf, on clk_bus) on the bus of the machine of OSD FDD (soft switch 23) if
   its DivMMC is off; `pentagon` `dos` as Pentagon (3Dxx with ROM 48, off on a fetch from RAM), ROM 2 = TR-DOS,
   ports #1F/#3F/#5F/#7F, #FF in TR-DOS. Drive pins active high as the tsconf Go core. `run_sim.sh` with `TRDOS=1`.
+- OSD ROM 128 (FL item, slot 4 + n, autoload): `kg_mcu` file loader (IOCTL) through the ROM loader FIFO to 0x30000
+  of machine n's bank (the first 16 KB: the 128 ROM only), only that machine held (`fl_hold`); `rom_file` of
+  `pentagon` maps ROM 0 there after a file of 16 KB or more; `run_sim.sh` `ROMFILE=1`. The firmware has no eject for FL items.
 - `karabas_go_top.v`: `NUM_MACHINES` (1 now), ROM loader FIFO (MCU address bits 17..16 = machine, 15..0 = offset in
   the ROM area at 0x20000 of its bank), soft switches in the order of `core.json` "osd".
 - `rtl/tv80`: the CPU, tv80 of karabas_go_v6z80p (with its X / Y flag fixes of CPI / CPD). One for the four machines:

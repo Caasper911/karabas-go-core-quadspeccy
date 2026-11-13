@@ -12,8 +12,9 @@
  Memory (byte address in the bank of the machine):
    0x00000..0x1FFFF  RAM pages 0..7
    0x20000..0x2FFFF  ROM area, 16 KB per ROM: 0 = 128 editor, 1 = 48 BASIC (#7FFD bit 4),
-                     2 reserved (TR-DOS), 3 the ESXDOS ROM of the DivMMC (8 KB); filled by the ROM
+                     2 TR-DOS, 3 the ESXDOS ROM of the DivMMC (8 KB); filled by the ROM
                      loader of the top
+   0x30000..0x33FFF  ROM 0 from the ROM file of the OSD (rom_file: in place of that of the core file)
    0x80000..0xFFFFF  DivMMC RAM, 64 banks of 8 KB
 
  DivMMC (divmmc_en): ports #E3 (7 CONMEM, 6 MAPRAM, 5..0 the RAM bank at 2000), #E7 (bit 0 the card
@@ -75,6 +76,7 @@ module pentagon #(
 	output reg mic = 1'b0,
 	input wire nmi,               // NMI while high
 	input wire areset,            // power on (the start of the core): clears the DivMMC, a reset does not
+	input wire rom_file,          // the 128 ROM from the ROM file of the OSD (0x30000)
 
 	// TR-DOS and the Beta Disk (the controller hrdy_fdc in the top): this machine has them (OSD FDD, DivMMC off)
 	input wire trdos_en,
@@ -290,7 +292,10 @@ always @* begin
 		map_ro = dv_mapram && dv_bank == 6'd3;
 		map_addr = {4'b0001, dv_bank, cpu_a[12:0]};
 	end else case (cpu_a[15:14])
-		2'd0: begin map_ro = 1'b1; map_addr = {5'd0, 2'b10, dos_rom ? 2'b10 : {1'b0, p7ffd[4]}, cpu_a[13:0]}; end   // ROM 0 / 1 / TR-DOS
+		2'd0: begin   // ROM 0 / 1 / TR-DOS; 0 from the file of the OSD (0x30000) when it was loaded
+			map_ro = 1'b1;
+			map_addr = {5'd0, 1'b1, ~dos_rom & ~p7ffd[4] & rom_file, dos_rom ? 2'b10 : {1'b0, p7ffd[4]}, cpu_a[13:0]};
+		end
 		2'd1: map_addr = {6'd0, 3'd5, cpu_a[13:0]};
 		2'd2: map_addr = {6'd0, 3'd2, cpu_a[13:0]};
 		default: map_addr = {6'd0, p7ffd[2:0], cpu_a[13:0]};

@@ -39,6 +39,9 @@ parameter USE_SDEMU = `SDEMU;
 `ifndef SDTEST
 `define SDTEST 0
 `endif
+`ifndef ROMFILE
+`define ROMFILE 0
+`endif
 `ifndef CUSTOM_ROM
 `define CUSTOM_ROM 0
 `endif
@@ -95,6 +98,8 @@ sdram_model #(.ROWS(1024), .RB(10)) chip(
 
 // 128, 48, TR-DOS (FF), ESXDOS from 0x20000 (word 0x10000)
 initial $readmemh("roms.hex", chip.mem, BOFS + 'h10000, BOFS + 'h16FFF);
+// ROMFILE: ROM 0 from the ROM file of the OSD at 0x30000 (word 0x18000)
+initial if (`ROMFILE) $readmemh("romfile.hex", chip.mem, BOFS + 'h18000, BOFS + 'h19FFF);
 
 wire ce7, ce_cpu, ce14, int_n, vga_half;
 wire [8:0] hc, vc, vga_x;
@@ -237,7 +242,7 @@ endgenerate
 pentagon #(.CPU(`QUAD ? 2 : 1)) m(
 	.clk(clk_bus), .reset(reset), .pause(1'b0),
 	.ce7(ce7), .ce_cpu(`QUAD ? (cslot == 3'd0) : ce_cpu), .hc(hc), .vc(vc), .int_n(int_n), .frame(frame),
-	.keys(40'd0), .kempston(8'd0), .tape_in(1'b0), .beeper(beeper), .mic(mic), .nmi(1'b0), .areset(~ready),
+	.keys(40'd0), .kempston(8'd0), .tape_in(1'b0), .beeper(beeper), .mic(mic), .nmi(1'b0), .areset(~ready), .rom_file(`ROMFILE != 0),
 	.trdos_en(`TRDOS != 0), .fdc_cs(fdc_cs), .fdc_csff(fdc_csff), .fdc_rd(fdc_rd), .fdc_wr(fdc_wr),
 	.fdc_q(fdc_q), .fdc_busy(fdc_busy),
 	.divmmc_en(DIVMMC != 0), .spi_sck(spi_sck), .spi_mosi(spi_mosi), .spi_cs_n(spi_cs_n),

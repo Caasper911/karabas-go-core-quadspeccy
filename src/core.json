@@ -74,7 +74,7 @@
     ],
     "boards": {
         "go": {
-            "build": "26111601",
+            "build": "26111603",
             "bitstream": "karabas_go.bin"
         }
     },
@@ -290,6 +290,19 @@
             }
         },
         {
+            "type": "FL",
+            "key": "rom1",
+            "name": "ROM 128",
+            "slot": 4,
+            "exts": [
+                "rom",
+                "bin"
+            ],
+            "dir": "/zx",
+            "autoload": true,
+            "page": 1
+        },
+        {
             "index": 16,
             "key": "aymix2",
             "type": "S",
@@ -343,6 +356,19 @@
                 "item": "sd2",
                 "value": "image"
             }
+        },
+        {
+            "type": "FL",
+            "key": "rom2",
+            "name": "ROM 128",
+            "slot": 5,
+            "exts": [
+                "rom",
+                "bin"
+            ],
+            "dir": "/zx",
+            "autoload": true,
+            "page": 2
         },
         {
             "index": 17,
@@ -400,6 +426,19 @@
             }
         },
         {
+            "type": "FL",
+            "key": "rom3",
+            "name": "ROM 128",
+            "slot": 6,
+            "exts": [
+                "rom",
+                "bin"
+            ],
+            "dir": "/zx",
+            "autoload": true,
+            "page": 3
+        },
+        {
             "index": 18,
             "key": "aymix4",
             "type": "S",
@@ -453,6 +492,19 @@
                 "item": "sd4",
                 "value": "image"
             }
+        },
+        {
+            "type": "FL",
+            "key": "rom4",
+            "name": "ROM 128",
+            "slot": 7,
+            "exts": [
+                "rom",
+                "bin"
+            ],
+            "dir": "/zx",
+            "autoload": true,
+            "page": 4
         }
     ]
 }
