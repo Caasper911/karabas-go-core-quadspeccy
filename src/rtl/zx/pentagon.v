@@ -613,7 +613,7 @@ reg [7:0] q_bmp = 8'd0;
 (* ram_style = "block" *) reg [15:0] qbuf [0:63];
 reg [15:0] q_word_r = 16'd0;
 assign q_word = q_word_r;
-wire q_we = ~reset & quad & ~q_go & fst[1] & ~b_busy;   // the default branch of the fetch: the attribute is there
+wire q_we = quad & ~q_go & fst[1] & ~b_busy;   // the default branch of the fetch: the attribute is there
 always @(posedge clk) begin
 	if (q_we)
 		qbuf[{q_b, qk[4:0]}] <= {q_bmp, b_q};
@@ -623,12 +623,10 @@ end
 wire [12:0] qbmp_off = {q_line[7:6], q_line[2:0], q_line[5:3], qk[4:0]};
 wire [12:0] qatr_off = {3'b110, q_line[7:3], qk[4:0]};
 
+// not stopped by a reset of the machine (the ULA shows the memory during a reset): stopped, the quad view showed the
+// last line fetched over the whole screen of the machine while it was in reset (stripes, found on the board)
 always @(posedge clk) begin
-	if (reset) begin
-		fk <= 6'd32;
-		fst <= 2'd0;
-		qk <= 6'd32;
-	end else if (quad) begin
+	if (quad) begin
 		// ---- quad view: a line on request ----
 		fk <= 6'd32;
 		if (q_go) begin

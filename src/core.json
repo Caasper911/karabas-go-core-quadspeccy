@@ -58,7 +58,7 @@
     ],
     "boards": {
         "go": {
-            "build": "26111402",
+            "build": "26111404",
             "bitstream": "karabas_go.bin"
         }
     },
@@ -162,6 +162,16 @@
                 "Core 2",
                 "Core 3",
                 "Core 4"
+            ],
+            "default": 0
+        },
+        {
+            "index": 21,
+            "type": "S",
+            "name": "Keys to",
+            "options": [
+                "Selected",
+                "All"
             ],
             "default": 0
         },

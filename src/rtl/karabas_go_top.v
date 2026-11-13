@@ -320,8 +320,8 @@ assign FT_OE_N = mcu_ft_vga_on ? 1'b0 : 1'b1;
 // soft switches
 
 // 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image)
-wire [21*8-1:0] softsw;
-kg_soft_switches #(.N(21), .INIT(168'h00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
+wire [22*8-1:0] softsw;
+kg_soft_switches #(.N(22), .INIT(176'h00_00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
 	.clk(clk_bus),
 	.command(softsw_command),
 	.regs(softsw),
@@ -340,6 +340,7 @@ wire [3:0] sw_sd_img = {softsw[14*8], softsw[12*8], softsw[10*8], softsw[8*8]};
 wire [3:0] sw_acb = {softsw[18*8], softsw[17*8], softsw[16*8], softsw[15*8]};   // AY mix of machine n: 0 ABC, 1 ACB
 wire sw_tape_all = softsw[19*8];          // Tape in: 0 Board (all machines hear TAPE_IN), 1 Core (from the Tape out core)
 wire [1:0] sw_tape_core = softsw[20*8 +: 2];   // Tape out: the machine on TAPE_OUT (Core 1..4)
+wire sw_keys_all = softsw[21*8];          // Keys to: 0 Selected, 1 All (the quad view only)
 
 // ---------------------------------------------------------------------------------------------
 // keyboard
@@ -704,8 +705,9 @@ generate
 				.vc(r_vc[gi*9 +: 9]),
 				.int_n(r_int_n[gi]),
 				.frame(r_frame[gi*5 +: 5]),
-				.keys(sel == gi ? kbd_keys : 40'd0),
-				.kempston(sel == gi ? kbd_kempston : 8'd0),
+				// keyboard and joysticks: the selected machine; in the quad view with Keys to = All every machine
+				.keys((sel == gi || (sw_keys_all && !full)) ? kbd_keys : 40'd0),
+				.kempston((sel == gi || (sw_keys_all && !full)) ? kbd_kempston : 8'd0),
 				.mouse(ms_q[gi*24 +: 24]),
 				.tape_in(m_tape_in[gi]),
 				.nmi(sw_nmi && sel == gi),
