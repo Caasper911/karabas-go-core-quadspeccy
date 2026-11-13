@@ -15,6 +15,7 @@ module bus_ce (
 	input wire clk_sys,
 	input wire clk_bus,
 	output reg ce = 1'b0,
+	output wire ce_n,          // the value ce takes at the next clock (video_px registers its pixel enable from it)
 	output reg v_clk = 1'b0
 );
 
@@ -25,8 +26,9 @@ always @(posedge clk_bus)
 reg [1:0] tgl_s = 2'b00;
 always @(posedge clk_sys) begin
 	tgl_s <= {tgl_s[0], bus_tgl};
-	ce <= tgl_s[0] ^ tgl_s[1];
+	ce <= ce_n;
 end
+assign ce_n = tgl_s[0] ^ tgl_s[1];
 
 always @(negedge clk_sys)
 	v_clk <= ce;

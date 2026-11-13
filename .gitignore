@@ -45,3 +45,5 @@ src/sim/work_q/
 src/sim/work_c/
 src/sim/work_ay/
 src/sim/work_v/
+src/sim/work_vpx/
+src/sim/work_osd/
