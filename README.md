@@ -66,7 +66,7 @@ Pentagon 128 работают параллельно на одной плате.
 репозиторием (`../karabas-go-tools`).
 
 ```sh
-git clone --recursive <repo>      # или git submodule update --init
+git clone --recursive https://github.com/Caasper911/karabas-go-core-quadspeccy.git   # или git submodule update --init
 cd src
 make             # все платы: quadspeccy.kg с прошивками Go, Mini, Mini G
 make go          # одна плата (go / mini / minig): синтез, implementation, bitstream, её часть quadspeccy.kg
