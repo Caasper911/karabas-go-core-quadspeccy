@@ -8,10 +8,10 @@ This repository contains code and data under different terms. Each part keeps th
 
    - 128.rom, 48.rom: the ZX Spectrum 128 / 48 ROMs, copyright (c) Amstrad plc. Amstrad allows them to be
      distributed with emulators, without charge for them.
-   - esxdos085.rom, esxdos089.bin: esxDOS 0.8.5 / 0.8.9 for DivMMC, Papaya Dezign (https://esxdos.org). Freeware
+   - esxdos089.bin: esxDOS 0.8.9 for DivMMC, Papaya Dezign (https://esxdos.org). Freeware
      with no published license ("All rights perversed", README.TXT of the esxDOS package); free to download from
      esxdos.org.
-   - trdos504t.rom, trdos504tprofiD.rom: TR-DOS 5.04T (the second one with the Profi changes), copyright (c) 1986
+   - trdos504tprofiD.rom: TR-DOS 5.04T with the Profi changes, copyright (c) 1986
      Technology Research Ltd (proprietary), the 5.04T changes "Copyright C.C. 1991" (from the ROM text).
 
    If you own the rights to one of them and want it removed, open an issue.

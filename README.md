@@ -98,9 +98,9 @@ make go-report   # ресурсы и тайминг последней сбор�
 ROM не под лицензией MIT, права у их владельцев (подробно в [LICENSE](LICENSE)):
 
 - `128.rom`, `48.rom` — ROM ZX Spectrum 128 / 48, © Amstrad (распространение с эмуляторами разрешено);
-- `esxdos089.bin` (и `esxdos085.rom`) — [esxDOS](https://esxdos.org) для DivMMC, Papaya Dezign: freeware без
+- `esxdos089.bin` — [esxDOS](https://esxdos.org) для DivMMC, Papaya Dezign: freeware без
   опубликованной лицензии, свободно скачивается с esxdos.org;
-- `trdos504tprofiD.rom` (и `trdos504t.rom`) — TR-DOS 5.04T, © 1986 Technology Research Ltd (проприетарная),
+- `trdos504tprofiD.rom` — TR-DOS 5.04T, © 1986 Technology Research Ltd (проприетарная),
   изменения 5.04T © C.C. 1991.
 
 ## Лицензия

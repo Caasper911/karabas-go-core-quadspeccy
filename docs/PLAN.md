@@ -66,7 +66,7 @@ Win+1..4 выбирает машину для клавиатуры, Win+`~ пе�
 выполнены, но запас clk_bus 0,026 нс — любое добавление логики, скорее всего, потребует оптимизации.
 
 - [x] DivMMC: `#E3/#E7/#EB`, automap, CONMEM / MAPRAM, 512 КБ RAM в банке машины, ESXDOS 0.8.9
-      (`roms/esxdos089.bin`; 0.8.5 лежит рядом как `esxdos085.rom`)
+      (`roms/esxdos089.bin`)
 - [x] SPI-мастер 7 МГц → карта №2 платы (владеет одна машина) или `kg_sd_emu` на образе
 - [x] `img_sdc` на 4 слота, `kg_mcu` с образами (ENABLE_IMG)
 - [x] OSD: страницы «Core 1..4» (DivMMC On/Off, SD card Real/Image, SD image), NMI (Win+F11)
