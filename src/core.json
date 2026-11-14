@@ -3,6 +3,7 @@
     "name": "Quad Speccy",
     "visible": true,
     "type": "osd",
+    "link": 2,
     "order": 20,
     "eeprom_bank": 255,
     "rtc_mode": 0,

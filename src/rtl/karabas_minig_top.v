@@ -6,7 +6,7 @@
 
  Quad Speccy (rtl/quadspeccy.v) on Karabas Mini rev. G (the pins of karabas-go-core-tsconf). As karabas_mini_top.v
  except: the PCM5102 (DAC_BCK / DAC_WS / DAC_DAT) instead of the sigma-delta outputs, MCU_SCK on a global clock pin
- (C9: IBUFG + BUFG, bursts up to 32 MHz; the FT812 gets the SCK before the BUFG, a BUFG drives clock pins only),
+ (C9: IBUFG + BUFG, SCK up to 32 MHz; the FT812 gets the SCK before the BUFG, a BUFG drives clock pins only),
  MCU_IO<5:0>, the ESP32 lines; no FT_RESET, MIDI_CLK, MIDI_RESET_N, ESP_RESET_N, ESP_BOOT_N.
 */
 
@@ -136,14 +136,14 @@ assign FLASH_HOLD_N = 1'b1;
 // the core
 
 wire clk_bus, clk_8, areset;   // clk_bus: the net of the ucf
-wire mcu_burst_ready, dvi_only;
+wire mcu_int, dvi_only;
 wire ft_spi_on, ft_mosi, ft_cs_n;
 wire [7:0] video_r, video_g, video_b;
 wire video_hs, video_vs, video_de;
 wire [15:0] audio_l, audio_r;
 
-// MCU_IO: [0] burst CS_N, [1] burst READY, [2] SD2 CS_N, [3] FT CS_N
-assign MCU_IO[1] = mcu_burst_ready;
+// MCU_IO: [0] an input (the burst CS_N of v1), [1] INT of link v2 (the burst READY of v1), [2] SD2 CS_N, [3] FT CS_N
+assign MCU_IO[1] = mcu_int;
 assign MCU_IO[0] = 1'bZ;
 assign MCU_IO[5:2] = 4'bZZZZ;
 
@@ -152,7 +152,7 @@ wire mcu_sck_ibufg, mcu_sck;
 IBUFG ibufg_mcu_sck(.I(MCU_SCK), .O(mcu_sck_ibufg));
 BUFG bufg_mcu_sck(.I(mcu_sck_ibufg), .O(mcu_sck));
 
-quadspeccy #(.NUM_MACHINES(NUM_MACHINES), .ENABLE_FDC(0), .MCU_BURST_MAX_MHZ(32)) core(
+quadspeccy #(.NUM_MACHINES(NUM_MACHINES), .ENABLE_FDC(0)) core(
 	.CLK_50MHZ(CLK_50MHZ),
 	.clk_bus(clk_bus),
 	.clk_8(clk_8),
@@ -163,7 +163,7 @@ quadspeccy #(.NUM_MACHINES(NUM_MACHINES), .ENABLE_FDC(0), .MCU_BURST_MAX_MHZ(32)
 	.sd_cs_n(SD_CS_N), .sd_clk(SD_CLK), .sd_mosi(SD_DI), .sd_miso(SD_DO),
 	.mcu_cs_n(MCU_CS_N), .mcu_sck(mcu_sck), .mcu_mosi(MCU_MOSI), .mcu_miso(MCU_MISO),
 	.mcu_ft_ss(MCU_IO[3]), .mcu_sd2_ss(MCU_IO[2]),
-	.mcu_burst_cs_n(MCU_IO[0]), .mcu_burst_ready(mcu_burst_ready),
+	.mcu_int(mcu_int),
 	.dvi_only(dvi_only),
 	.ft_spi_on(ft_spi_on), .ft_vga_on(), .ft_sck(), .ft_mosi(ft_mosi), .ft_cs_n(ft_cs_n),
 	.ft_reset(), .ft_miso(FT_SPI_MISO),

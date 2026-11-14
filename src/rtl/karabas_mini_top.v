@@ -9,7 +9,7 @@
      video of the FT812 into the FPGA: not used;
    - sound: sigma-delta on AUDIO_L / AUDIO_R (as TS-Conf on the Mini) and the HDMI sound;
    - the FT812 gets its 8 MHz clock on FT_CLK_OUT all the time, its SPI is the MCU's;
-   - MCU bursts: MCU_IO<0> burst CS_N, MCU_IO<1> READY; MCU_SCK is not on a clock pin (CLOCK_DEDICATED_ROUTE);
+   - MCU link v2: MCU_IO<1> INT (the burst READY of v1), MCU_IO<0> an input; MCU_SCK is not on a clock pin (CLOCK_DEDICATED_ROUTE);
    - no floppy drive (no TR-DOS: ENABLE_FDC 0), no beeper pin; the CF card, ADC, MIDI, ESP and flash not used.
 */
 
@@ -142,18 +142,18 @@ assign FLASH_HOLD_N = 1'b1;
 // the core
 
 wire clk_bus, clk_8, areset;   // clk_bus: the net of the ucf
-wire mcu_burst_ready, dvi_only;
+wire mcu_int, dvi_only;
 wire ft_spi_on, ft_sck, ft_mosi, ft_cs_n, ft_reset;
 wire [7:0] video_r, video_g, video_b;
 wire video_hs, video_vs, video_de;
 wire [15:0] audio_l, audio_r;
 
-// MCU_IO: [0] burst CS_N, [1] burst READY, [2] SD2 CS_N, [3] FT CS_N
-assign MCU_IO[1] = mcu_burst_ready;
+// MCU_IO: [0] an input (the burst CS_N of v1), [1] INT of link v2 (the burst READY of v1), [2] SD2 CS_N, [3] FT CS_N
+assign MCU_IO[1] = mcu_int;
 assign MCU_IO[0] = 1'bZ;
 assign MCU_IO[3:2] = 2'bZZ;
 
-quadspeccy #(.NUM_MACHINES(NUM_MACHINES), .ENABLE_FDC(0), .MCU_BURST_MAX_MHZ(0)) core(
+quadspeccy #(.NUM_MACHINES(NUM_MACHINES), .ENABLE_FDC(0)) core(
 	.CLK_50MHZ(CLK_50MHZ),
 	.clk_bus(clk_bus),
 	.clk_8(clk_8),
@@ -164,7 +164,7 @@ quadspeccy #(.NUM_MACHINES(NUM_MACHINES), .ENABLE_FDC(0), .MCU_BURST_MAX_MHZ(0))
 	.sd_cs_n(SD_CS_N), .sd_clk(SD_CLK), .sd_mosi(SD_DI), .sd_miso(SD_DO),
 	.mcu_cs_n(MCU_CS_N), .mcu_sck(MCU_SCK), .mcu_mosi(MCU_MOSI), .mcu_miso(MCU_MISO),
 	.mcu_ft_ss(MCU_IO[3]), .mcu_sd2_ss(MCU_IO[2]),
-	.mcu_burst_cs_n(MCU_IO[0]), .mcu_burst_ready(mcu_burst_ready),
+	.mcu_int(mcu_int),
 	.dvi_only(dvi_only),
 	.ft_spi_on(ft_spi_on), .ft_vga_on(), .ft_sck(ft_sck), .ft_mosi(ft_mosi), .ft_cs_n(ft_cs_n),
 	.ft_reset(ft_reset), .ft_miso(FT_SPI_MISO),

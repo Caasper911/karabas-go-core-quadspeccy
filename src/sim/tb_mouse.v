@@ -7,7 +7,7 @@ reg clk = 0; always #17.8 clk = ~clk;
 reg [7:0] mx = 0, my = 0; reg [3:0] mz = 0; reg [2:0] mb = 0; reg upd = 0; reg full = 0; reg [1:0] sel = 0;
 reg vs = 1; reg midq = 1;
 wire [95:0] q; wire [9:0] cx, cy; wire con, swe, fset, qset; wire [1:0] sin;
-quad_mouse #(.NUM_MACHINES(3)) u(.clk(clk), .ms_x(mx), .ms_y(my), .ms_z(mz), .ms_b(mb), .ms_upd(upd), .full(full),
+quad_mouse #(.NUM_MACHINES(3)) u(.clk(clk), .ms_x(mx), .ms_y(my), .ms_z(mz), .ms_b(mb), .ms_wr(upd), .full(full),
 	.sel(sel), .vsync(vs), .mid_quad(midq), .ms_q(q), .cur_x(cx), .cur_y(cy), .cur_on(con), .sel_we(swe),
 	.sel_in(sin), .full_set(fset), .quad_set(qset));
 always @(posedge clk) begin
@@ -21,7 +21,7 @@ endtask
 integer errors = 0, n;
 always @(posedge clk) if (swe) sel <= sin;
 task rep(input [7:0] x, input [7:0] y, input [2:0] b);
-	begin @(negedge clk); mx = x; my = y; mb = b; upd = ~upd; repeat (4) @(negedge clk); end
+	begin @(negedge clk); mx = x; my = y; mb = b; upd = 1; @(negedge clk); upd = 0; repeat (3) @(negedge clk); end
 endtask
 task chk(input integer c, input [255:0] what);
 	begin if (!c) begin errors = errors + 1; $display("ERROR: %0s (cx %0d cy %0d sel %0d on %b)", what, cx, cy, sel, con); end end

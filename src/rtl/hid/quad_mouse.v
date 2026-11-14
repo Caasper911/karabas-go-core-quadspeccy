@@ -4,8 +4,8 @@
 /*
  quad_mouse.v
 
- The USB mouse of the MCU (MS_X / MS_Y / MS_Z deltas and MS_B, MS_UPD toggles with each report; HID: x right, y down,
- button bit 0 left):
+ The USB mouse of the MCU (kg_mcu2: MS_X / MS_Y / MS_Z deltas and MS_B, MS_WR a clock with each report; HID: x right,
+ y down, button bit 0 left; the wheel of the Kempston mouse is 4 bits: the low 4 bits of the delta):
  - full screen: the Kempston mouse of the selected machine. Each machine has its own position (x, y, wheel), moved
    only while it is the one shown, so a machine sees no jump when it is selected again. The ports of machine k:
    ms_q[k*24 +: 24] = {buttons byte, y, x}: x grows to the right, y up (the delta negated), the buttons byte
@@ -27,7 +27,7 @@ module quad_mouse #(
 	input wire [7:0] ms_y,
 	input wire [3:0] ms_z,
 	input wire [2:0] ms_b,
-	input wire ms_upd,
+	input wire ms_wr,             // a clock per report
 	input wire full,
 	input wire [1:0] sel,
 	input wire vsync,             // the vertical sync of the VGA (low active, 48.8 Hz): counts the idle time
@@ -50,8 +50,7 @@ reg [3:0] mz [0:3];
 integer i;
 initial for (i = 0; i < 4; i = i + 1) begin mx[i] = 8'h7F; my[i] = 8'h7F; mz[i] = 4'd7; end
 
-reg upd_d = 1'b0;
-wire upd = (ms_upd != upd_d);
+wire upd = ms_wr;
 reg b0_d = 1'b0, b2_d = 1'b0;
 // double click: vertical syncs since the last press of the left button (20: none pending), its quadrant
 reg [4:0] dc_t = 5'd20;
@@ -68,7 +67,6 @@ assign cur_on = (idle != 8'd244);
 reg vs_d = 1'b1;
 
 always @(posedge clk) begin
-	upd_d <= ms_upd;
 	vs_d <= vsync;
 	sel_we <= 1'b0;
 	full_set <= 1'b0;

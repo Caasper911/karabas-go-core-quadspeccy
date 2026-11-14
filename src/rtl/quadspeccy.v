@@ -25,17 +25,19 @@
 
  DivMMC and Z-Controller (docs/ARCHITECTURE.md): the SPI of machine n goes to the card of the board (SD_*) when it chose
  it and is the lowest such machine (one owner: the others see no card), else to kg_sd_emu n on the image
- of slot n (img_sdc, one request at a time for all four).
+ of slot n (the file mounter of kg_mcu2, one request at a time for all four).
 
  ROM loader: the MCU address bits 17..16 are the machine, 15..0 the offset in its ROM area
  (16 KB per ROM: 0 the 128 editor, 1 48 BASIC); the bytes go through a FIFO to channel A of the
  bank while the machines are held in reset.
+
+ MCU: link v2 (kg_mcu2 of modules, karabas-go-firmware docs/link_v2.md; core.json "link": 2), MCU_INT on the IO1
+ line of the board (the pin of the burst ready of v1).
 */
 
 module quadspeccy #(
 	parameter NUM_MACHINES = 4,
-	parameter ENABLE_FDC = 1,       // TR-DOS and the Beta Disk on the floppy drive of the board (the Go only; 0: not built)
-	parameter MCU_BURST_MAX_MHZ = 0 // kg_mcu BURST_MAX_MHZ: 32 with MCU_SCK on a global clock buffer (Mini G)
+	parameter ENABLE_FDC = 1        // TR-DOS and the Beta Disk on the floppy drive of the board (the Go only; 0: not built)
 ) (
 	input wire CLK_50MHZ,
 
@@ -66,8 +68,7 @@ module quadspeccy #(
 	output wire mcu_miso,
 	input wire mcu_ft_ss,           // the chip selects of the FT812 and SD2 from the MCU
 	input wire mcu_sd2_ss,
-	input wire mcu_burst_cs_n,
-	output wire mcu_burst_ready,
+	output wire mcu_int,            // link v2: the interrupt to the MCU (high active, the IO1 line)
 	output wire dvi_only,           // HDMI without the data islands (no sound), set in the MCU
 
 	// the FT812: the MCU only (its SPI passed through, the video of the Go)
@@ -140,125 +141,107 @@ bus_ce bus_ce(.clk_sys(clk_sys), .clk_bus(clk_bus), .ce(ce_28m), .v_clk(v_clk));
 // MCU
 
 wire [7:0] kb_status, kb_dat0, kb_dat1, kb_dat2, kb_dat3, kb_dat4, kb_dat5;
-wire [12:0] joy_l, joy_r;
-wire [1:0] hw_btn;
-wire [15:0] softsw_command, osd_command;
-wire loader_act;
-wire [31:0] loader_addr;
-wire [7:0] loader_data;
-wire loader_wr;
+wire [15:0] mcu_joy_l, mcu_joy_r;
+wire [12:0] joy_l = mcu_joy_l[12:0];
+wire [12:0] joy_r = mcu_joy_r[12:0];
+wire [5:0] mcu_btns;
+wire [1:0] hw_btn = mcu_btns[1:0];
 wire mcu_busy;
-// the file mounter (the images of the emulated SD cards, slot n = machine n)
-wire [7:0] img_mounted;
-wire [63:0] img_size;
-wire img_data_wr, img_result_wr, img_q_wr, img_q_ack;
-wire [8:0] img_data_addr;
-wire [7:0] img_data, img_result;
-wire [15:0] img_sum;
-wire [23:0] img_q_di;
+// LOAD of the MCU: kind 0 the ROMs of core.json (the only kind of this core)
+wire [1:0] ld_kind;
+wire ld_active, ld_wr_mcu, ld_ready;
+wire [31:0] ld_addr_mcu;
+wire [7:0] ld_data_mcu;
+wire loader_act = ld_active && ld_kind == 2'd0;
+wire loader_wr = ld_wr_mcu && ld_kind == 2'd0;
+// the file mounter (the images of the emulated SD cards, slot n = machine n): the sdc_* side of img_sdc
+wire sdc_busy, sdc_done, sdc_error, sdc_byte_in_strobe;
+wire [2:0] sdc_slot;
+wire [8:0] sdc_byte_addr;
+wire [7:0] sdc_byte_in_data, sdc_img_mounted, sdc_byte_out_data;
+wire [63:0] sdc_img_size;
+wire [3:0] hd_rd, hd_wr;
+wire [31:0] sdc_sector;
+// the bitmap OSD (kg_l2_osd_overlay)
+wire osd_wr, osd_en, osd_zoom;
+wire [11:0] osd_waddr;
+wire [7:0] osd_wdata;
+wire [23:0] osd_fg, osd_bg;
+wire [1:0] osd_alpha, osd_place;
+wire [4:0] osd_px, osd_ph;
+wire [3:0] osd_py;
+wire [5:0] osd_pw;
 
 // the USB mouse of the MCU (quad_mouse)
-wire [7:0] ms_x, ms_y;
-wire [3:0] ms_z;
-wire [2:0] ms_b;
-wire ms_upd;
+wire [7:0] ms_x, ms_y, ms_z, ms_b;
+wire ms_wr;
 
-kg_mcu #(
-	.BURST_MAX_MHZ(MCU_BURST_MAX_MHZ),
+// the OSD switches (core.json "osd", the "index" of the items): 32 registers of 8 bits, switch n = softsw[n*8 +: 8];
+// 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image); 24 + n Memory size.
+// SW_INIT: the defaults of core.json until the MCU sends them.
+wire [32*8-1:0] softsw;
+
+kg_mcu2 #(
+	.CAPS(16'h0010),             // bit 4: LD_READY (the ROM loader FIFO)
+	.SW_N(32),
+	.SW_INIT(256'h00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00),
 	.CS_FILTER(3),
-	.ENABLE_RTC(0),
-	.ENABLE_UART(0),
-	.ENABLE_MATRIX(0),
-	.ENABLE_DEBUG(0),
+	.ENABLE_OSD(1),
 	.ENABLE_IMG(1),
-	.ENABLE_FILE(0),
+	.IMG_OUT_LATENCY(3),
 	.ENABLE_FT(1),
 	.ENABLE_SD2(0)
 ) mcu (
 	.CLK(clk_bus),
 	.N_RESET(~areset),
 
+	.MCU_SCK(mcu_sck),
 	.MCU_MOSI(mcu_mosi),
 	.MCU_MISO(mcu_miso),
-	.MCU_SCK(mcu_sck),
 	.MCU_SS(mcu_cs_n),
+	.MCU_INT(mcu_int),
 	.MCU_SPI_FT_SS(mcu_ft_ss),
 	.MCU_SPI_SD2_SS(mcu_sd2_ss),
-	.MCU_BURST_CS_N(mcu_burst_cs_n),
-	.MCU_BURST_READY(mcu_burst_ready),
 
-	.MS_X(ms_x), .MS_Y(ms_y), .MS_Z(ms_z), .MS_B(ms_b), .MS_UPD(ms_upd),
+	.SW(softsw), .SW_WR(), .SW_INDEX(), .SW_VALUE(),
+	.HW_ID(), .DVI_ONLY(dvi_only), .CORE_BUILD(), .FW_BUILD(),
+	.BUSY(mcu_busy),
+	.BTNS(mcu_btns),
+	.RELOAD_REQ(1'b0), .RELOAD_CORE(8'd0),
 
-	.KB_STATUS(kb_status),
-	.KB_DAT0(kb_dat0),
-	.KB_DAT1(kb_dat1),
-	.KB_DAT2(kb_dat2),
-	.KB_DAT3(kb_dat3),
-	.KB_DAT4(kb_dat4),
-	.KB_DAT5(kb_dat5),
-	.KB_SCANCODE(), .KB_SCANCODE_UPD(),
-	.XT_SCANCODE(), .XT_SCANCODE_UPD(),
-	.PS2_COMMAND(16'd0), .PS2_COMMAND_WR(1'b0),
+	// the USB report (modifiers, 6 key codes) as KB_STATUS, KB_DAT0..5 of v1, now changed whole
+	.KBD({kb_dat5, kb_dat4, kb_dat3, kb_dat2, kb_dat1, kb_dat0, kb_status}), .KBD_WR(),
+	.PS2_CODE(), .PS2_KIND(), .PS2_WR(),
+	.MS_X(ms_x), .MS_Y(ms_y), .MS_Z(ms_z), .MS_B(ms_b), .MS_WR(ms_wr),
+	.JOY_L(mcu_joy_l), .JOY_R(mcu_joy_r), .JOY_WR(),
+	.PS2_CMD(16'd0), .PS2_CMD_WR(1'b0),
 
-	.JOY_L(joy_l),
-	.JOY_R(joy_r),
-	.BTNS(hw_btn),
+	.LD_KIND(ld_kind), .LD_SLOT(), .LD_SIZE(), .LD_START(), .LD_ACTIVE(ld_active), .LD_END(),
+	.LD_ADDR(ld_addr_mcu), .LD_DATA(ld_data_mcu), .LD_WR(ld_wr_mcu), .LD_READY(ld_ready),
 
-	.RTC_A(8'd0), .RTC_DI(8'd0), .RTC_DO(), .RTC_CS(1'b0), .RTC_WR_N(1'b1),
+	.OSD_WR(osd_wr), .OSD_WADDR(osd_waddr), .OSD_WDATA(osd_wdata), .OSD_EN(osd_en),
+	.OSD_FG(osd_fg), .OSD_BG(osd_bg), .OSD_ALPHA(osd_alpha),
+	.OSD_PX(osd_px), .OSD_PY(osd_py), .OSD_PW(osd_pw), .OSD_PH(osd_ph), .OSD_PLACE(osd_place), .OSD_ZOOM(osd_zoom),
 
-	.UART_RX_DATA(), .UART_RX_IDX(),
-	.UART_TX_DATA(8'd0), .UART_TX_WR(1'b0), .UART_TX_MODE(1'b0),
-	.UART_DLM(8'd0), .UART_DLL(8'd0), .UART_DLM_WR(1'b0), .UART_DLL_WR(1'b0),
+	.SDC_IMG_MOUNTED(sdc_img_mounted), .SDC_IMG_SIZE(sdc_img_size),
+	.SDC_RD({4'd0, hd_rd}), .SDC_WR({4'd0, hd_wr}), .SDC_SECTOR(sdc_sector),
+	.SDC_BUSY(sdc_busy), .SDC_DONE(sdc_done), .SDC_ERROR(sdc_error), .SDC_SLOT(sdc_slot),
+	.SDC_BYTE_IN_STROBE(sdc_byte_in_strobe), .SDC_BYTE_ADDR(sdc_byte_addr), .SDC_BYTE_IN_DATA(sdc_byte_in_data),
+	.SDC_BYTE_OUT_DATA(sdc_byte_out_data),
+	.IMG_WP(), .IMG_PHYS_WR(), .IMG_PHYS(), .IMG_FLUSH(), .FDD_CHNG_WR(), .FDD_CHNG(),
+	.FDD_CHNG_REQ(1'b0), .FDD_CHNG_DS(2'd0),
+	.BK_MOUNT(1'b0), .BK_FLUSHED(1'b0), .BK_SLOT(3'd0), .BK_SIZE(32'd0), .BK_KIND(8'd0), .BK_RESULT(8'd0),
+	.IMG_ACTIVE(),
 
-	.SOFTSW_COMMAND(softsw_command),
-	.OSD_COMMAND(osd_command),
+	.PORT_OUT_DATA(), .PORT_OUT_WR(), .PORT_OUT_READY(4'd0),
+	.PORT_IN_DATA(32'd0), .PORT_IN_WR(4'd0), .PORT_CFG(128'd0), .PORT_IN_FULL(), .PORT_STAT(), .PORT_STAT_WR(),
 
-	.ROMLOADER_ACTIVE(loader_act),
-	.ROMLOAD_ADDR(loader_addr),
-	.ROMLOAD_DATA(loader_data),
-	.ROMLOAD_WR(loader_wr),
-	.IOCTL_ACTIVE(),
-	.FILELOAD_RESET(), .FILELOAD_ACTIVE(), .FILELOAD_SIZE(), .FILELOAD_ADDR(), .FILELOAD_DATA(),
-	.FILELOAD_WR(),
+	.RTC_A(8'd0), .RTC_DI(8'd0), .RTC_CS(1'b0), .RTC_WR_N(1'b1), .RTC_DO(),
+	.MATRIX_CMD(24'd0), .MATRIX_CMD_WR(1'b0), .DEBUG_ADDR(16'd0), .DEBUG_DATA(16'd0),
 
-	.FT_SPI_ON(ft_spi_on),
-	.FT_VGA_ON(ft_vga_on),
-	.FT_RESET(ft_reset),
-	.FT_SCK(ft_sck),
-	.FT_MOSI(ft_mosi),
-	.FT_MISO(ft_miso),
-	.FT_CS_N(ft_cs_n),
-
-	.SD2_SCK(), .SD2_MOSI(), .SD2_MISO(1'b1), .SD2_CS_N(),
-
-	.MATRIX_CMD(24'd0), .MATRIX_CMD_WR(1'b0),
-	.DEBUG_ADDR(16'd0), .DEBUG_DATA(16'd0),
-
-	.HWID(), .DVI_ONLY(dvi_only), .CORE_BUILD(), .FW_BUILD(),
-
-	.IMG_MOUNTED(img_mounted), .IMG_SIZE(img_size), .IMG_DATA_WR(img_data_wr), .IMG_DATA_ADDR(img_data_addr),
-	.IMG_DATA(img_data), .IMG_RESULT_WR(img_result_wr), .IMG_RESULT(img_result), .IMG_SUM(img_sum),
-	.IMG_Q_WR(img_q_wr), .IMG_Q_DI(img_q_di), .IMG_Q_ACK(img_q_ack), .IMG_PHYS_WR(),
-	.IMG_PHYS(), .IMG_FLUSH(), .IMG_WP(),
-	.FDD_CHNG_REQ(1'b0), .FDD_CHNG_DS(2'd0), .FDD_CHNG_WR(), .FDD_CHNG(),
-
-	.ESP_UART_TX_DATA(), .ESP_UART_TX_WR(), .ESP_UART_RX_DATA(8'd0), .ESP_UART_RX_WR(1'b0),
-	.FLASHBOOT_START(1'b0), .FLASHBOOT_COREID(5'd0),
-	.PRN_DATA(8'd0), .PRN_WR(1'b0),
-
-	.BUSY(mcu_busy)
-);
-
-// ---------------------------------------------------------------------------------------------
-// soft switches
-
-// 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image); 24 + n Memory size
-wire [32*8-1:0] softsw;
-kg_soft_switches #(.N(32), .INIT(256'h00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00)) soft_switches(
-	.clk(clk_bus),
-	.command(softsw_command),
-	.regs(softsw),
-	.upd()
+	.FT_SPI_ON(ft_spi_on), .FT_VGA_ON(ft_vga_on), .FT_RESET(ft_reset),
+	.FT_SCK(ft_sck), .FT_MOSI(ft_mosi), .FT_MISO(ft_miso), .FT_CS_N(ft_cs_n),
+	.SD2_SCK(), .SD2_MOSI(), .SD2_MISO(1'b1), .SD2_CS_N()
 );
 
 wire [2:0] joy_type_l = softsw[2:0];
@@ -374,27 +357,30 @@ wire [25:0] ld_fifo_q;
 reg ld_fifo_rd = 1'b0;
 reg [1:0] ld_st = 2'd0;
 
-// 256 words (one RAMB8; with 512 in a RAMB16 map crashed in its global placement): the MCU sends in bursts and has no flow control; a byte that finds the FIFO full is lost
-// (ld_ovf, sticky: square 2 of the diagnostics red). With 16 words the ESXDOS ROM of machine 4, the last file, came
-// broken after the ports of sdram_ctrl went to clk_bus (a longer loop per byte).
+// 1024 words: the MCU sends DATA packets of 512 bytes (a byte per 250 ns at most) and asks LOAD STATUS before each
+// (caps bit 4): LD_READY while 512 words are free. A byte that still finds the FIFO full is lost (ld_ovf, sticky:
+// square 2 of the diagnostics red). Link v1 had no flow control: 256 words (with 16 the ESXDOS ROM of machine 4, the
+// last file, came broken after the ports of sdram_ctrl went to clk_bus, a longer loop per byte).
 wire ld_fifo_full;
+wire [10:0] ld_fifo_count;
 reg ld_ovf = 1'b0;
-kg_fifo #(.DW(26), .AW(8)) ld_fifo(
+kg_fifo #(.DW(26), .AW(10)) ld_fifo(
 	.clk(clk_bus),
 	.reset(areset),
-	.wr(loader_wr && loader_act && loader_addr[31:18] == 14'd0),
-	.din({loader_addr[17:0], loader_data}),
+	.wr(loader_wr && ld_addr_mcu[31:18] == 14'd0),
+	.din({ld_addr_mcu[17:0], ld_data_mcu}),
 	.full(ld_fifo_full),
 	.rd(ld_fifo_rd),
 	.dout(ld_fifo_q),
 	.empty(ld_fifo_empty),
-	.count()
+	.count(ld_fifo_count)
 );
+assign ld_ready = ld_fifo_count <= 11'd512;
 
 // a bank is busy while the controller has not answered its request (the loader's, or the CPU's: one side only)
 wire [3:0] ld_busy = ld_req ^ a_ack ^ cpu_req;
 always @(posedge clk_bus)
-	if (loader_wr && loader_act && ld_fifo_full)
+	if (loader_wr && ld_fifo_full)
 		ld_ovf <= 1'b1;
 // the loader's own requests in flight: ld_busy alone also holds the CPU's requests, so ld_hold on it would
 // reset the machine at its first memory read (found on the board: the machine never ran)
@@ -492,9 +478,9 @@ quad_mouse #(.NUM_MACHINES(NUM_MACHINES)) mouse(
 	.clk(clk_bus),
 	.ms_x(ms_x),
 	.ms_y(ms_y),
-	.ms_z(ms_z),
-	.ms_b(ms_b),
-	.ms_upd(ms_upd),
+	.ms_z(ms_z[3:0]),    // the 4 bits of the Kempston wheel
+	.ms_b(ms_b[2:0]),
+	.ms_wr(ms_wr),
 	.full(full),
 	.sel(sel),
 	.vsync(vo_vs),
@@ -601,7 +587,7 @@ tv80_quad #(.Mode(0), .IOWait(1)) cpus (
 // ---------------------------------------------------------------------------------------------
 // DivMMC: the SD cards
 
-wire [3:0] spi_sck, spi_mosi, spi_cs_n, spi_miso, sd_wait, emu_miso, emu_wait, hd_rd, hd_wr;
+wire [3:0] spi_sck, spi_mosi, spi_cs_n, spi_miso, sd_wait, emu_miso, emu_wait;
 wire [4*32-1:0] hd_lba;
 wire [4*8-1:0] hd_byte_out;
 
@@ -627,29 +613,12 @@ generate
 	end
 endgenerate
 
-// the file mounter: one request at a time, the lowest slot first (img_sdc takes the sector with it)
-wire sdc_busy, sdc_done, sdc_error, sdc_byte_in_strobe;
-wire [2:0] sdc_slot;
-wire [8:0] sdc_byte_addr;
-wire [7:0] sdc_byte_in_data, sdc_img_mounted;
-wire [63:0] sdc_img_size;
+// the file mounter (kg_mcu2, the sdc_* side of img_sdc): one request at a time, the lowest slot first (it takes the
+// sector with it)
 wire [3:0] hd_req = hd_rd | hd_wr;
 wire [1:0] hd_first = hd_req[0] ? 2'd0 : hd_req[1] ? 2'd1 : hd_req[2] ? 2'd2 : 2'd3;
-
-img_sdc #(.OUT_LATENCY(3), .TIMEOUT(24'd5600000)) sdc(
-	.clk(clk_bus),
-	.reset(1'b0),
-	.img_mounted(img_mounted), .img_size(img_size), .img_data_wr(img_data_wr), .img_data_addr(img_data_addr),
-	.img_data(img_data), .img_result_wr(img_result_wr), .img_result(img_result), .img_sum(img_sum),
-	.img_q_wr(img_q_wr), .img_q_di(img_q_di), .img_q_ack(img_q_ack),
-	.sdc_img_mounted(sdc_img_mounted), .sdc_img_size(sdc_img_size),
-	.sdc_rd({4'd0, hd_rd}), .sdc_wr({4'd0, hd_wr}),
-	.sdc_sector(hd_lba[hd_first*32 +: 32]),
-	.sdc_busy(sdc_busy), .sdc_done(sdc_done), .sdc_error(sdc_error), .sdc_slot(sdc_slot),
-	.sdc_byte_in_strobe(sdc_byte_in_strobe), .sdc_byte_addr(sdc_byte_addr), .sdc_byte_in_data(sdc_byte_in_data),
-	.sdc_byte_out_data(hd_byte_out[sdc_slot[1:0]*8 +: 8]),
-	.active()
-);
+assign sdc_sector = hd_lba[hd_first*32 +: 32];
+assign sdc_byte_out_data = hd_byte_out[sdc_slot[1:0]*8 +: 8];
 wire [4*4-1:0] m_pix;
 
 generate
@@ -893,22 +862,22 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.de(vo_de)
 );
 
-// the OSD in the middle of the picture (counted from the end of the syncs, steps of 2 clocks / 2 lines): the picture
-// from step 40 (vga_x 392), 368 steps wide: 96; from line step 28 (dl 272 after the vsync ending at 244), 288: 68
-kg_osd_overlay #(.H_OFFSET(96), .V_OFFSET(68)) overlay(
+// the bitmap OSD of link v2, centred on de (736 x 576: scale 2, 512 x 256); the overlay takes high active syncs and
+// delays the picture, the syncs and de by 2 clocks
+wire ov_hs, ov_vs;
+kg_l2_osd_overlay overlay(
+	.wclk(clk_bus),
+	.osd_wr(osd_wr), .osd_waddr(osd_waddr), .osd_wdata(osd_wdata), .osd_en(osd_en),
+	.osd_fg(osd_fg), .osd_bg(osd_bg), .osd_alpha(osd_alpha),
+	.osd_px(osd_px), .osd_py(osd_py), .osd_pw(osd_pw), .osd_ph(osd_ph), .osd_place(osd_place), .osd_zoom(osd_zoom),
+	.icon_on(8'd0), .icon_act(8'd0),
 	.clk(clk_bus),
-	.rgb_i({vo_r, vo_g, vo_b}),
-	.rgb_o({video_r, video_g, video_b}),
-	.hsync_i(vo_hs),
-	.vsync_i(vo_vs),
-	.v_offset(11'd0),
-	.h_offset(11'd0),
-	.osd_command(osd_command)
+	.rgb_i({vo_r, vo_g, vo_b}), .hs_i(~vo_hs), .vs_i(~vo_vs), .de_i(vo_de),
+	.rgb_o({video_r, video_g, video_b}), .hs_o(ov_hs), .vs_o(ov_vs), .de_o(video_de)
 );
 
-assign video_hs = vo_hs;
-assign video_vs = vo_vs;
-assign video_de = vo_de;
+assign video_hs = ~ov_hs;
+assign video_vs = ~ov_vs;
 
 // ---------------------------------------------------------------------------------------------
 // sound: the beeper, MIC, tape input and TurboSound of the selected machine

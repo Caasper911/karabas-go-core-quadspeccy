@@ -8,7 +8,7 @@ Quad Speccy for the Karabas Go board (Xilinx Spartan-6 XC6SLX25, ISE 14.7, XST):
 side by side, each in its own SDRAM bank, shown all four on one screen or the selected one full screen. Only the
 idea comes from the ReVerSE-U16 Quad Speccy (`../quadspeccy`); the code is new. The board infrastructure follows
 karabas-go-core-tsconf (`../karabas-go-core-tsconf`): the shared modules of the git submodule `modules/`
-(karabas-go-modules: `kg_mcu`, `kg_pll`, `kg_osd_overlay`, `kg_soft_switches`, `kg_pcm5102`, memories), the
+(karabas-go-modules: `kg_mcu2` of MCU link v2, `kg_pll`, `kg_l2_osd_overlay`, `kg_pcm5102`, memories), the
 Makefile build, `core.json` in the kgo2 format. Its `modules/CLAUDE.md` has the rules for those modules (Verilog-2001
 for XST, no coregen, tests).
 
@@ -30,8 +30,8 @@ in the same change as the code they describe.
 - `map` runs single-threaded (`-mt off` in `MAP_OPT`): with `-mt 2` it crashed in Global Placement without a message.
 - XST `-opt_mode Area` (60 % slices against 66 % with Speed); `map -lc off`: `-lc area` packs worse (more slices).
   A change of the Makefile options does not rebuild: `touch karabas_go.ngc` before `make go`.
-- Sources are listed in `src/karabas_go.prj` (the shared modules as `"../modules/rtl/..."`; `kg_mcu` needs all its
-  `kg_mcu_*` decoders, `kg_osd_overlay` needs `kg_pix_doubler`).
+- Sources are listed in `src/karabas_go.prj` (the shared modules as `"../modules/rtl/..."`; `kg_mcu2` needs `kg_l2_link`
+  and the targets `kg_l2_sys`, `_hid`, `_load`, `_osd`, `_img`; nothing of link v1: no `kg_mcu*`).
 - `make_core.py` comes from the sibling `../karabas-go-tools/make_core/`.
 - Synthesis takes about 2 minutes, the whole build about 10. Check the `.syr` "Clock Information" (clk_sys, clk_bus,
   MCU_SCK only) and that there are no latches; `make go-report` for LUTs and "All constraints were met".
@@ -74,7 +74,8 @@ in the same change as the code they describe.
   safety net (`late`). Video fetch through channel B at most 12 pixels ahead.
 - `rtl/video/video_out.v`: scan doubler to 896 x 640 at 28 MHz (the 50 Hz VGA raster of TS-Conf), blanking as 720 x
   576p50: visible 736 x 576, back porch 80 clocks (16 lit the picture on some monitors: black level clamp); the OSD
-  centred (offsets 96 / 68). Quad view: quadrants 368 x 288, a VGA-timed line fetch per machine into `qbuf` (block
+  (`kg_l2_osd_overlay`, bitmap 256 x 128) centres itself on `de` at scale 2, high active syncs (inverted around it),
+  2 clocks latency for picture, syncs and de. Quad view: quadrants 368 x 288, a VGA-timed line fetch per machine into `qbuf` (block
   RAM, read one clock after `q_addr`, as `brd_mem`), not a frame buffer; `src/sim/run_vpx.sh` checks every pixel.
   (Scale 4/3 at 21 MHz was tried, branch `quad-scale` history: looked bad, removed.)
 - 1024 KB RAM as Profi in every `pentagon` (OSD Memory size 128K / 1024K per machine, soft switch 24 + n, `mem1024`;
@@ -109,10 +110,15 @@ in the same change as the code they describe.
   `karabas_{go,mini,minig}_top.v` put it on the pins (as `kg_osca_system` of karabas_go_v6z80p). Pins of the Mini /
   Mini G ucf from karabas-go-core-tsconf, the timing block the same in the three. Go: VGA + PCM5102 + FDC. Mini:
   HDMI (`rtl/video/hdmi_out.v`: pixel clock = clk_bus, `kg_dcm` x5, `hdmi_tx` INPUT_REG 1, 48 kHz), sigma-delta,
-  FT_CLK_OUT 8 MHz (the FT812 needs it). Mini G: PCM5102 with `DIV_BITS` 2 (55 kHz as tsconf; 1 as Go is silent), MCU_SCK IBUFG + BUFG (burst 32 MHz), FT_SPI_SCK from
+  FT_CLK_OUT 8 MHz (the FT812 needs it). Mini G: PCM5102 with `DIV_BITS` 2 (55 kHz as tsconf; 1 as Go is silent), MCU_SCK IBUFG + BUFG (32 MHz), FT_SPI_SCK from
   before the BUFG. OSD "FDD" has `"boards": ["go"]`.
 - `quadspeccy.v`: `NUM_MACHINES` (4), ROM loader FIFO (MCU address bits 17..16 = machine, 15..0 = offset in
-  the ROM area at 0x20000 of its bank), soft switches in the order of `core.json` "osd".
+  the ROM area at 0x20000 of its bank; 1024 words, `LD_READY` while 512 are free, CAPS bit 4), soft switches `SW`
+  of `kg_mcu2` (`SW_INIT` = the defaults of `core.json` "osd").
+- MCU link v2 (`kg_mcu2`, karabas-go-firmware `docs/link_v2.md`, `modules/docs/link_v2_migration.md`; `core.json`
+  `"link": 2`, firmware 26111315 or later): `MCU_INT` on the IO1 line (Go `MCU_SPI_IO[0]`, Mini / Mini G
+  `MCU_IO[1]`, the pins of the v1 burst READY), IO0 an input; `KBD` whole report = the old `kb_status` / `kb_dat0..5`,
+  `MS_WR` a clock per mouse report (`quad_mouse`), the file mounter on `SDC_*` (the `sdc_*` of `img_sdc`).
 - `rtl/tv80`: the CPU, tv80 of karabas_go_v6z80p (with its X / Y flag fixes of CPI / CPD). One for the four machines:
   `tv80_quad.v` around `tv80q_core.v`, which `tools/mkquad.py` GENERATES from `tv80_core.v` (every register a memory of
   4 indexed by the CPU of the clock; never edit `tv80q_core.v`, change the generator or `tv80_core.v` and run

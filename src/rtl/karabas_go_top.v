@@ -139,17 +139,18 @@ assign FLASH_HOLD_N = 1'b1;
 // the core
 
 wire clk_bus, areset, v_clk;   // clk_bus: the net of the ucf
-wire mcu_burst_ready;
+wire mcu_int;
 wire ft_spi_on, ft_vga_on, ft_sck, ft_mosi, ft_cs_n;
 wire [7:0] video_r, video_g, video_b;
 wire video_hs, video_vs;
 wire [15:0] audio_l, audio_r;
 
-// burst transfers: firmware IO0 = MCU_SPI_IO[1] (M11, burst CS_N), IO1 = MCU_SPI_IO[0] (N9, READY)
-assign MCU_SPI_IO[0] = mcu_burst_ready;
+// MCU link v2: INT on the IO1 line of the firmware = MCU_SPI_IO[0] (N9, the burst READY of v1; the index is swapped on
+// the Go), IO0 = MCU_SPI_IO[1] (M11, the burst CS_N of v1) an input
+assign MCU_SPI_IO[0] = mcu_int;
 assign MCU_SPI_IO[1] = 1'bZ;
 
-quadspeccy #(.NUM_MACHINES(NUM_MACHINES), .ENABLE_FDC(1), .MCU_BURST_MAX_MHZ(0)) core(
+quadspeccy #(.NUM_MACHINES(NUM_MACHINES), .ENABLE_FDC(1)) core(
 	.CLK_50MHZ(CLK_50MHZ),
 	.clk_bus(clk_bus),
 	.clk_8(),
@@ -160,7 +161,7 @@ quadspeccy #(.NUM_MACHINES(NUM_MACHINES), .ENABLE_FDC(1), .MCU_BURST_MAX_MHZ(0))
 	.sd_cs_n(SD_CS_N), .sd_clk(SD_CLK), .sd_mosi(SD_DI), .sd_miso(SD_DO),
 	.mcu_cs_n(MCU_CS_N), .mcu_sck(MCU_SCK), .mcu_mosi(MCU_MOSI), .mcu_miso(MCU_MISO),
 	.mcu_ft_ss(MCU_SPI_FT_CS_N), .mcu_sd2_ss(MCU_SPI_SD2_CS_N),
-	.mcu_burst_cs_n(MCU_SPI_IO[1]), .mcu_burst_ready(mcu_burst_ready),
+	.mcu_int(mcu_int),
 	.dvi_only(),
 	.ft_spi_on(ft_spi_on), .ft_vga_on(ft_vga_on), .ft_sck(ft_sck), .ft_mosi(ft_mosi), .ft_cs_n(ft_cs_n),
 	.ft_reset(), .ft_miso(FT_SPI_MISO),

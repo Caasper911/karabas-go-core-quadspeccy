@@ -182,7 +182,7 @@ NET "MCU_SCK"       LOC="C3"   | IOSTANDARD = LVCMOS33;
 NET "MCU_MOSI"      LOC="B3"   | IOSTANDARD = LVCMOS33;
 NET "MCU_MISO"      LOC="B2"   | IOSTANDARD = LVCMOS33;
 NET "MCU_CS_N"      LOC="A2"   | IOSTANDARD = LVCMOS33 | PULLUP;
-NET "MCU_IO<0>"     LOC="G6"   | IOSTANDARD = LVCMOS33 | PULLUP; # burst cs_n: idle high while the mcu does not drive it
+NET "MCU_IO<0>"     LOC="G6"   | IOSTANDARD = LVCMOS33 | PULLUP; # IO0 (the burst cs_n of v1): an input, idle high
 NET "MCU_IO<1>"     LOC="F6"   | IOSTANDARD = LVCMOS33;
 NET "MCU_IO<2>"     LOC="F7"   | IOSTANDARD = LVCMOS33; # SD2
 NET "MCU_IO<3>"     LOC="D6"   | IOSTANDARD = LVCMOS33; # FT
@@ -223,7 +223,7 @@ NET "MCU_SCK" CLOCK_DEDICATED_ROUTE = FALSE;
 NET "FT_CLK" CLOCK_DEDICATED_ROUTE = FALSE;
 
 
-# MCU_SCK is not on a clock pin of the Mini (kg_mcu clocks its SPI receiver from it)
+# MCU_SCK is not on a clock pin of the Mini (kg_l2_link clocks its SPI shifter from it)
 NET "MCU_SCK" CLOCK_DEDICATED_ROUTE = FALSE;
 
 # ------------------------------------------------------------------------------------------------------------
@@ -242,11 +242,11 @@ NET "MCU_SCK" CLOCK_DEDICATED_ROUTE = FALSE;
 NET "CLK_50MHZ" TNM_NET = "CLK_50MHZ";
 TIMESPEC "TS_CLK_50MHZ" = PERIOD "CLK_50MHZ" 20 ns HIGH 50%;
 NET "clk_bus" TNM_NET = "TG_CLK_BUS";
-# MCU link (kg_mcu): SPI mode 0 from the RP2040 at 16 MHz (bursts up to 32 MHz).
+# MCU link v2 (kg_mcu2): SPI mode 0 from the RP2040 at 16 MHz (up to 32 MHz).
 NET "MCU_SCK" TNM_NET = "TG_CLK_MCU";
 TIMESPEC "TS_CLK_MCU" = PERIOD "TG_CLK_MCU" 32 MHz;
-# MCU_SCK is not related to CLK_50MHZ. kg_mcu crosses with toggle synchronisers and holds the data registers
-# for 8 SCK periods (a received byte) or from the request to the next SCK edges (a reply word): their data
+# MCU_SCK is not related to CLK_50MHZ. kg_l2_link crosses with toggle synchronisers and holds the data registers
+# for 8 SCK periods (a received byte) or from the load of an answer byte to the next SCK edges: their data
 # paths are bounded by one SCK period.
 TIMESPEC "TS_MCU_TO_BUS" = FROM "TG_CLK_MCU" TO "TG_CLK_BUS" 31.25 ns DATAPATHONLY;
 TIMESPEC "TS_BUS_TO_MCU" = FROM "TG_CLK_BUS" TO "TG_CLK_MCU" 31.25 ns DATAPATHONLY;

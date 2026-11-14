@@ -167,6 +167,31 @@ Win+1..4 выбирает машину для клавиатуры, Win+`~ пе�
 - [x] Karabas Mini / Mini G: HDMI (`hdmi_out.v`: zhdmi, DCM ×5 от `clk_bus`, растр 896 × 640, DE 736 × 576, звук
       48 кГц), звук sigma-delta (Mini) / PCM5102 (Mini G), такт FT812, MCU (burst 32 МГц на Mini G). Проверено на платах
 
+## Milestone 7: MCU link v2
+
+По `modules/docs/link_v2_migration.md`; прошивка 26111315 или новее.
+
+- [x] Сабмодуль `modules/` на master с link v2 (9ff485e)
+- [x] `kg_mcu2` вместо `kg_mcu` + `kg_soft_switches` + `img_sdc`: переключатели `SW` (`SW_INIT` = прежний `INIT`),
+      отчёт клавиатуры целиком (`KBD`), мышь по `MS_WR` (`quad_mouse`, `run_mouse.sh` 0 ошибок), джойстики 16 бит,
+      ROM через `LD_*` (`LD_KIND` 0), монтировщик на `SDC_*`
+- [x] Управление потоком загрузчика ROM: FIFO 1024 слова, `LD_READY` при 512 свободных (caps бит 4)
+- [x] OSD — битмап `kg_l2_osd_overlay` (масштаб 2, по центру `de`) вместо `kg_osd_overlay`
+- [x] `MCU_INT` на линии IO1 (Go `MCU_SPI_IO[0]`, Mini / Mini G `MCU_IO[1]`), `"link": 2` в `core.json`
+- [x] Сборка, все constraints выполнены на трёх платах (v1 → v2):
+
+      | Плата | LUT | Слайсы | RAMB16 / RAMB8 |
+      |---|---|---|---|
+      | Go | 6722 → 7202 | 2331 → 2660 (62 → 70 %) | 4 / 16 → 4 / 15 |
+      | Mini | 7649 → 8143 | 2759 → 2913 (73 → 77 %) | 3 / 16 → 3 / 15 |
+      | Mini G | 7588 → 8112 | 2727 → 2940 (72 → 78 %) | 3 / 16 → 3 / 15 |
+
+      Прирост — в основном битмап-OSD (масштаб, смешивание, тень) против текстового.
+- [ ] Железо (копия `.kg` под другим именем, `kg_board.py load` с `debug=1`: «MCU link v2», «core answered»):
+      загрузка ROM четырёх машин (`ld_ovf` не взводится), OSD и страницы Core 1..4, клавиатура и Win-клавиши, мышь в
+      quad и в полном экране, джойстики, образы SD четырёх машин, Reset / Reset All / NMI, звук; Go, Mini, Mini G;
+      потом ядро v1 на той же прошивке
+
 ## Открытые вопросы
 
 - Передаёт ли прошивка MCU клавишу Win (бит 3 / 7 `KB_STATUS`) вместе с цифрами в ядро, или

@@ -53,6 +53,12 @@ Pentagon 128 работают параллельно на одной плате.
 выбравших Real. SD card действует и при выключенном DivMMC (Z-Controller). Также в OSD задаётся цвет рамки выбранной машины в quad-режиме: 8 цветов Спектрума, по
 умолчанию зелёный.
 
+## Прошивка MCU
+
+Ядро работает по MCU link v2 (`"link": 2` в `core.json`): нужна прошивка
+[karabas-go-firmware](https://github.com/andykarpov/karabas-go-firmware) 26111315 или новее. Более старая прошивка
+ядро не загрузит (не найдёт в `.kg` прошивки для своей платы).
+
 ## Сборка
 
 Нужны ISE 14.7, GNU make и bash (Linux, или MSYS2 / Git Bash на Windows), python 3 и
