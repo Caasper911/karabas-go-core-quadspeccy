@@ -2,7 +2,7 @@
 
 FPGA-ядро для [Karabas Go](https://github.com/andykarpov/karabas-go): четыре независимых
 Pentagon 128 работают параллельно на одной плате. Можно смотреть все четыре на одном экране или
-выбранный на весь экран. Идея взята у QuadSpeccy для ReVerSE-U16 (MVV), реализация новая.
+выбранный на весь экран. Идея взята у [QuadSpeccy для ReVerSE-U16](https://github.com/mvvproject/ReVerSE-U16/tree/master/u16_quadspeccy) (MVV), реализация новая.
 
 ## Статус
 
