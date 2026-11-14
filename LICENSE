@@ -23,11 +23,15 @@ This repository contains code and data under different terms. Each part keeps th
    license in the header of each file; tv80_quad.v and the generated tv80q_core.v / tv80q_reg.v are derived from it
    and keep that license. The headers must be kept.
 
-3. VG93 model (src/rtl/vg93/)
-   --------------------------
-   Copied from karabas-go-core-tsconf (https://github.com/andykarpov/karabas-go-core-tsconf), MIT License,
-   copyright (c) 2024 Andy Karpov and contributors. The microcode ROM (vg93-microcode-rom.hex) was dumped from the
-   1818VG93 die by deathsoft and decoded by titus.
+3. VG93 model and the Beta Disk glue (src/rtl/vg93/) - HRDY
+   ---------------------------------------------------------
+   The 1818VG93 (WD FD1793) model vg93_*.v / *.vh is by HRDY (Dmitry Demyanenko,
+   https://github.com/demyanenko-d/FD1793_1818VG93), which publishes no license; its rights stay with the author.
+   hrdy_fdc.v and fdd_glue.v are made after epm570/bdi_top.v and epm570/fdd_glue.v of that repository (the data
+   separator after fapch_zek by ZEK, ZX-Evolution). The microcode ROM (vg93-microcode-rom.hex) was dumped from the
+   die by deathsoft and decoded by dr.Titus. The files came here through karabas-go-core-tsconf
+   (https://github.com/andykarpov/karabas-go-core-tsconf, MIT License, copyright (c) 2024 Andy Karpov); the MIT
+   License there and below covers only the changes made in those repositories, not the model of HRDY.
 
 4. karabas-go-modules (modules/, a git submodule)
    ----------------------------------------------

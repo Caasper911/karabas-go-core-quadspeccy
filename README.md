@@ -106,5 +106,6 @@ ROM не под лицензией MIT, права у их владельцев 
 ## Лицензия
 
 Смешанная, см. [LICENSE](LICENSE): ROM принадлежат своим владельцам; T80 и tv80 под своими лицензиями (в
-заголовках файлов); модель VG93 из karabas-go-core-tsconf под MIT; `modules/` — по условиям karabas-go-modules;
+заголовках файлов); модель VG93 и обвязка Beta Disk — HRDY ([FD1793_1818VG93](https://github.com/demyanenko-d/FD1793_1818VG93), без
+опубликованной лицензии, пришли через karabas-go-core-tsconf); `modules/` — по условиям karabas-go-modules;
 остальное (ядро, скрипты, документация, битстримы) — MIT.
