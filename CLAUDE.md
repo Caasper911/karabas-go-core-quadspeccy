@@ -55,6 +55,13 @@ in the same change as the code they describe.
   `TESTROM=<name>` assembles `src/sim/<name>.asm` into that place (`im2test`: IM 2 with a vector table, the
   testbench counts the interrupts its handler saw). The testbench compares every byte the CPU takes (`cpu_di`) with
   the model.
+  `SDIMG=1` (with `SDEMU=1`): the card is an 8 MB FAT16 image of `SDFILES` (`src/sim/mkfat.py`: directories / files
+  in its root, `NAME=PATH` renames, no spaces in paths; e.g. the `SYS` / `BIN` of an ESXDOS card), reads from it,
+  writes into it. `NMI_AT=<frame>` / `NMI2_AT=<frame>`: NMI as F11. Traces: `CPU_SPI=<frame>` every OUT of #EB / #E7
+  and IN of #EB other than FF with the PC (what the CPU really gets), `XFER_FROM=<frame>` every byte of `kg_sd_emu`
+  (its "master" column is one bit off); with `SDEMU` every command the card takes and its state each frame.
+  ESXDOS 0.8.9 uses only CMD17; it boots with an image in ~100 frames (it probes the absent second card, E7 = F5,
+  with 6.5-frame timeouts, then waits ~90 frames at 00F6).
 - `src/sim/run_t80cmp.sh [clocks]`: T80 (the reference) against tv80_core clock for clock (`tb_t80cmp.v`, made from
   `tb_tv80q.v`): opcode fetch starts, port writes, interrupt acknowledges (`MEMWR` also memory writes). Found the
   timing bugs of tv80 fixed in `tv80_core.v` / `tv80_mcode.v` (marked `karabas:`). A hierarchical reference from

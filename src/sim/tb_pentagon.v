@@ -42,11 +42,15 @@ parameter USE_SDEMU = `SDEMU;
 `ifndef SDTEST
 `define SDTEST 0
 `endif
+`ifndef CPU_SPI
+`define CPU_SPI 0
+`endif
 `ifndef CUSTOM_ROM
 `define CUSTOM_ROM 0
 `endif
 
 // DivMMC: fetches from its ROM, accesses of its RAM, exchanges on #EB
+integer frames_done = 0;
 integer dv_fetches = 0, dv_ram = 0, eb_xfers = 0, at_zero = 0;
 always @(posedge clk_bus) begin
 	if (m.cen_d && m.cpu_ts == 3'd1 && m.cpu_mc == 3'd1 && m.dv_mapped && m.cpu_a[15:13] == 3'd0)
@@ -55,6 +59,13 @@ always @(posedge clk_bus) begin
 		dv_ram = dv_ram + 1;
 	if (m.spi_busy && m.spi_cnt == 5'd0)
 		eb_xfers = eb_xfers + 1;
+	// CPU_SPI = n: from frame n on, every OUT of #EB / #E7 and every IN of #EB that gives a byte other than FF
+	if (`CPU_SPI != 0 && frames_done >= `CPU_SPI && m.cpu_cen && m.cpu_ts == 3'd2 && m.cpu_wait_n && m.eb_cycle &&
+		!m.io_done && !m.spi_busy && (m.cpu_write || m.spi_in != 8'hFF))
+		$display("%t cpu: %s %h cs %b pc %h", $time, m.cpu_write ? "OUT EB" : "IN  EB", m.cpu_write ? m.cpu_do : m.spi_in,
+			m.spi_cs_n, last_pc);
+	if (`CPU_SPI != 0 && frames_done >= `CPU_SPI && m.cen_d && m.cpu_ts == 3'd2 && !m.wr_done && m.io_wr && m.dv_port_e7 && !reset)
+		$display("%t cpu: OUT E7 %h pc %h", $time, m.cpu_do, last_pc);
 	// trace: #E3 writes, fetches of the entry points and of 3Dxx
 	if (m.cen_d && m.cpu_ts == 3'd2 && !m.wr_done && m.io_wr && m.dv_port_e3 && !reset)
 		$display("%t OUT (E3),%h  pc %h", $time, m.cpu_do, last_pc);
@@ -119,6 +130,22 @@ always @(posedge clk_bus)
 reg reset = 1'b1;
 always @(posedge clk_bus)
 	reset <= ~ready | warm;
+
+// NMI (as F11) at frame NMI_AT (0: none), held 2000 clocks
+`ifndef NMI_AT
+`define NMI_AT 0
+`endif
+`ifndef NMI2_AT
+`define NMI2_AT 0
+`endif
+reg nmi_tb = 1'b0;
+integer nmi_cnt = 0;
+always @(posedge clk_bus)
+	if (nmi_tb) begin
+		nmi_cnt = nmi_cnt + 1;
+		if (nmi_cnt > 2000)
+			nmi_tb <= 1'b0;
+	end
 
 zx_timing timing(
 	.clk(clk_bus), .reset(1'b0),
@@ -243,7 +270,7 @@ wire [7:0] ay_wd;
 pentagon #(.CPU(`QUAD ? 2 : 1)) m(
 	.clk(clk_bus), .reset(reset), .pause(1'b0),
 	.ce7(ce7), .ce_cpu(`QUAD ? (cslot == 3'd0) : ce_cpu), .hc(hc), .vc(vc), .int_n(int_n), .frame(frame),
-	.keys(40'd0), .kempston(8'd0), .tape_in(1'b0), .beeper(beeper), .mic(mic), .nmi(1'b0), .areset(~ready), .mem1024(`MEMTEST != 0),
+	.keys(40'd0), .kempston(8'd0), .tape_in(1'b0), .beeper(beeper), .mic(mic), .nmi(nmi_tb), .areset(~ready), .mem1024(`MEMTEST != 0),
 	.trdos_en(`TRDOS != 0), .fdc_cs(fdc_cs), .fdc_csff(fdc_csff), .fdc_rd(fdc_rd), .fdc_wr(fdc_wr),
 	.fdc_q(fdc_q), .fdc_busy(fdc_busy),
 	.divmmc_en(DIVMMC != 0), .spi_sck(spi_sck), .spi_mosi(spi_mosi), .spi_cs_n(spi_cs_n),
@@ -278,19 +305,46 @@ wire [7:0] hd_byte_out;
 reg hd_busy = 1'b0, hd_done = 1'b0, hd_strobe = 1'b0;
 reg [8:0] hd_addr = 9'd0;
 integer hd_cnt = 0, hd_reqs = 0;
+// SDIMG = 1: the image is work/sdimg.hex (mkfat.py, 8 MB), reads give its bytes, writes go into it
+`ifndef SDIMG
+`define SDIMG 0
+`endif
+reg [7:0] sd_img [0:8*1024*1024-1];
+integer sdi;
+initial if (`SDIMG) begin
+	for (sdi = 0; sdi < 8*1024*1024; sdi = sdi + 1)
+		sd_img[sdi] = 8'h00;      // $readmemh leaves the bytes the file does not name X
+	$readmemh("sdimg.hex", sd_img);
+	$display("sdimg: MBR %h %h, partition type %h", sd_img[510], sd_img[511], sd_img[450]);
+end
+reg [31:0] rq_lba = 32'd0;
+reg rq_wr = 1'b0;
+reg [8:0] wr_a = 9'd0, wr_a_d = 9'd0;
+reg wr_take = 1'b0, wr_take_d = 1'b0;
+wire [7:0] img_byte = `SDIMG ? sd_img[{rq_lba[13:0], hd_addr}] : rq_lba[7:0] ^ hd_addr[7:0];
 always @(posedge clk_bus) begin
 	hd_done <= 1'b0;
 	hd_strobe <= 1'b0;
+	wr_take <= 1'b0;
+	// hd_byte_out is the byte of hd_addr a clock after it (block RAM): taken one more clock later
+	wr_take_d <= wr_take;
+	wr_a_d <= wr_a;
+	if (wr_take_d && `SDIMG)
+		sd_img[{rq_lba[13:0], wr_a_d}] = hd_byte_out;
 	if (!hd_busy && (hd_rd || hd_wr)) begin
 		hd_busy <= 1'b1;
 		hd_cnt = 0;
 		hd_reqs = hd_reqs + 1;
+		rq_lba <= hd_lba;
+		rq_wr <= hd_wr;
 		$display("%t img_sdc: %s lba %0d", $time, hd_rd ? "read" : "write", hd_lba);
 	end else if (hd_busy) begin
 		hd_cnt = hd_cnt + 1;
 		if (hd_cnt > SD_DELAY && hd_cnt <= SD_DELAY + 512) begin
-			hd_strobe <= 1'b1;
+			hd_strobe <= ~rq_wr;
 			hd_addr <= hd_cnt - SD_DELAY - 1;
+			wr_take <= rq_wr;
+			wr_a <= hd_cnt - SD_DELAY - 1;
 		end
 		if (hd_cnt == SD_DELAY + 520) begin
 			hd_busy <= 1'b0;
@@ -298,17 +352,33 @@ always @(posedge clk_bus) begin
 		end
 	end
 end
+// XFER_FROM = n: every byte of the card from frame n on (SDEMU)
+`ifndef XFER_FROM
+`define XFER_FROM 0
+`endif
 always @(posedge clk_bus)
-	if (`SDTEST && sd_emu.xfer)
+	if ((`SDTEST || (`XFER_FROM != 0 && frames_done >= `XFER_FROM)) && sd_emu.xfer)
 		$display("%t emu: got %h cs %b state %0d sent %h | master exch done -> %h", $time, sd_emu.tx, sd_emu.xfer_cs_n,
 			sd_emu.state, sd_emu.sent, {m.spi_sr[6:0], spi_miso_tb});
 wire spi_miso_tb = USE_SDEMU ? emu_miso : 1'b1;
+// clocks of this frame with the CPU waiting for the emulated card
+integer wait_clocks = 0;
+always @(posedge clk_bus)
+	if (vc == 9'd0 && hc == 9'd0 && ce7)
+		wait_clocks = 0;
+	else if (USE_SDEMU && emu_wait)
+		wait_clocks = wait_clocks + 1;
+// every command the emulated card takes (SDEMU), with its idle bit
+always @(posedge clk_bus)
+	if (USE_SDEMU && sd_emu.xfer && !sd_emu.xfer_cs_n && sd_emu.state == 4'd1 && sd_emu.cnt == 3'd5)
+		$display("%t emu: %sCMD%0d arg %h, idle %b, pc %h", $time, sd_emu.acmd ? "A" : "", sd_emu.cmd,
+			sd_emu.arg, sd_emu.idle, last_pc);
 kg_sd_emu #(.CACHE(0)) sd_emu(
 	.clk(clk_bus), .reset(reset),
 	.sclk(spi_sck), .mosi(spi_mosi), .cs_n(spi_cs_n), .miso(emu_miso),
-	.img_mounted(img_mnt), .img_size(32'h04000000),
+	.img_mounted(img_mnt), .img_size(`SDIMG ? 32'h00800000 : 32'h04000000),
 	.hd_rd(hd_rd), .hd_wr(hd_wr), .hd_lba(hd_lba), .hd_busy(hd_busy), .hd_done(hd_done), .hd_error(1'b0),
-	.hd_byte_in_strobe(hd_strobe), .hd_byte_addr(hd_addr), .hd_byte_in_data(hd_lba[7:0] ^ hd_addr[7:0]), .hd_byte_out_data(hd_byte_out),
+	.hd_byte_in_strobe(hd_strobe), .hd_byte_addr(hd_addr), .hd_byte_in_data(img_byte), .hd_byte_out_data(hd_byte_out),
 	.waiting(emu_wait)
 );
 
@@ -393,7 +463,6 @@ task dump;
 	end
 endtask
 
-integer frames_done = 0;
 integer errors;
 reg vc0_d = 1'b0;
 always @(posedge clk_bus) begin
@@ -404,6 +473,15 @@ always @(posedge clk_bus) begin
 			warm <= 1'b1;
 			warm_cnt = 0;
 			$display("%t warm reset", $time);
+		end
+		if (USE_SDEMU)
+			$display("    emu state %0d waiting %b pending %b stale %b ready %b want %b, sd_wait clocks %0d, automap %b detect %b conmem %b",
+				sd_emu.state, emu_wait, sd_emu.pending, sd_emu.stale, sd_emu.ready, sd_emu.want, wait_clocks,
+				m.dv_automap, m.dv_detect, m.dv_conmem);
+		if (frames_done == `NMI_AT || frames_done == `NMI2_AT) begin
+			nmi_tb <= 1'b1;
+			nmi_cnt = 0;
+			$display("%t NMI", $time);
 		end
 		$display("%t frame %0d: pc %h, fetches %0d, checked reads %0d, sdram r %0d w %0d rfsh %0d, model errors %0d, late %b, 7ffd %h",
 			$time, frames_done, last_pc, fetches, checked, chip.reads, chip.writes, chip.refreshes,

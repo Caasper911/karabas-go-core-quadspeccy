@@ -22,6 +22,9 @@ esac
 mkdir -p work
 cp ../rtl/vg93/vg93-microcode-rom.hex work/   # the microcode of the VG93 model (\$readmemh in the work directory)
 printf '\377%.0s' $(seq 16384) > work/ff16k.bin
+# SDIMG=1 (with SDEMU=1): the card is an 8 MB FAT16 image of SDFILES (mkfat.py: directories / files, NAME=PATH),
+# e.g. the SYS and BIN of an ESXDOS card and TEST.SNA=game.sna
+if [ "${SDIMG:-0}" = 1 ]; then python mkfat.py work/sdimg.hex $SDFILES || exit 1; fi
 # SDTEST=1: the SD test program (sdtest.asm) in the place of the ESXDOS ROM
 ESX=../roms/esxdos089.bin
 # ZC=1 with it: the ports of the Z-Controller (#57 / #77) instead of those of the DivMMC (#EB / #E7)
@@ -77,7 +80,7 @@ PRJ
 
 cd work
 fuse -intstyle silent -incremental -lib unisims_ver -prj tb.prj -o $EXE -timeprecision_vhdl 1ps \
-	-d FRAMES=$FRAMES -d RESET_AT=${RESET_AT:-0} -d SDEMU=${SDEMU:-0} -d SDTEST=${SDTEST:-0} -d BANK=${BANK:-0} -d QUAD=${QUAD:-0} -d TRDOS=${TRDOS:-0} -d MEMTEST=${MEMTEST:-0} -d CUSTOM_ROM=$([ "$ESX" = ../roms/esxdos089.bin ] && [ "${TRDOS:-0}" = 0 ] && [ "${MEMTEST:-0}" = 0 ] && echo 0 || echo 1) work.tb_pentagon work.glbl > fuse.log 2>&1 || { tail -30 fuse.log; exit 1; }
+	-d FRAMES=$FRAMES -d RESET_AT=${RESET_AT:-0} -d NMI_AT=${NMI_AT:-0} -d NMI2_AT=${NMI2_AT:-0} -d XFER_FROM=${XFER_FROM:-0} -d SDIMG=${SDIMG:-0} -d CPU_SPI=${CPU_SPI:-0} -d SDEMU=${SDEMU:-0} -d SDTEST=${SDTEST:-0} -d BANK=${BANK:-0} -d QUAD=${QUAD:-0} -d TRDOS=${TRDOS:-0} -d MEMTEST=${MEMTEST:-0} -d CUSTOM_ROM=$([ "$ESX" = ../roms/esxdos089.bin ] && [ "${TRDOS:-0}" = 0 ] && [ "${MEMTEST:-0}" = 0 ] && echo 0 || echo 1) work.tb_pentagon work.glbl > fuse.log 2>&1 || { tail -30 fuse.log; exit 1; }
 echo "run all" > run.tcl
 echo "quit" >> run.tcl
 $EXE -intstyle silent -tclbatch run.tcl -testplusarg FRAMES=$FRAMES | tee sim.log | grep -vE "^(ISim|This is a|Time resolution|Simulator is doing|Finished circuit|WARNING: A WEBPACK)" || true
