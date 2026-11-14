@@ -4,7 +4,7 @@
 /*
  karabas_mini_top.v
 
- Quad Speccy (rtl/quadspeccy.v) on Karabas Mini (before rev. G; the pins of karabas-go-core-tsconf):
+ QuadSpeccy (rtl/quadspeccy.v) on Karabas Mini (before rev. G; the pins of karabas-go-core-tsconf):
    - video: HDMI (hdmi_out: the 28 MHz raster of the Go, DVI when the MCU says dvi_only); the VGA_* pins are the
      video of the FT812 into the FPGA: not used;
    - sound: sigma-delta on AUDIO_L / AUDIO_R (as TS-Conf on the Mini) and the HDMI sound;

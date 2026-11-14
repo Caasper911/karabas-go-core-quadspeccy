@@ -4,7 +4,7 @@
 /*
  quadspeccy.v
 
- Quad Speccy: up to four Pentagon 128 running side by side, each in its own SDRAM bank
+ QuadSpeccy: up to four Pentagon 128 running side by side, each in its own SDRAM bank
  (docs/ARCHITECTURE.md); the quad view (video_out) after power on, Win + ` switches to the selected
  machine full screen and back. Everything of the core but the board: the tops karabas_go_top.v,
  karabas_mini_top.v, karabas_minig_top.v put its video, sound and the FT812 / MCU lines on their pins.

@@ -4,7 +4,7 @@
 /*
  karabas_go_top.v
 
- Quad Speccy (rtl/quadspeccy.v) on Karabas Go: the VGA DAC (clocked by V_CLK), the PCM5102, the floppy drive
+ QuadSpeccy (rtl/quadspeccy.v) on Karabas Go: the VGA DAC (clocked by V_CLK), the PCM5102, the floppy drive
  (TR-DOS), the beeper output, the FT812 kept off the VGA bus but for the MCU.
 */
 

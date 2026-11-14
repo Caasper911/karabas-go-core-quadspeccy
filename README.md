@@ -1,8 +1,8 @@
-# Quad Speccy для Karabas Go / Mini / Mini G
+# QuadSpeccy для Karabas Go / Mini / Mini G
 
 FPGA-ядро для [Karabas Go](https://github.com/andykarpov/karabas-go): четыре независимых
 Pentagon 128 работают параллельно на одной плате. Можно смотреть все четыре на одном экране или
-выбранный на весь экран. Идея взята у Quad Speccy для ReVerSE-U16 (MVV), реализация новая.
+выбранный на весь экран. Идея взята у QuadSpeccy для ReVerSE-U16 (MVV), реализация новая.
 
 ## Статус
 

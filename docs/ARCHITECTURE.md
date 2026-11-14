@@ -1,7 +1,7 @@
-# Архитектура Quad Speccy для Karabas Go
+# Архитектура QuadSpeccy для Karabas Go
 
 Ядро: до четырёх Pentagon 128, которые работают параллельно на одной плате Karabas Go, Mini или Mini G
-(Spartan-6 XC6SLX25, ISE 14.7). Идея взята у Quad Speccy для ReVerSE-U16 (`../quadspeccy`),
+(Spartan-6 XC6SLX25, ISE 14.7). Идея взята у QuadSpeccy для ReVerSE-U16 (`../quadspeccy`),
 а код написан заново. Инфраструктуру платы (MCU-линк, OSD, PLL, ЦАП, сборка Makefile) даёт общий
 сабмодуль `modules/` (karabas-go-modules) по образцу karabas-go-core-tsconf.
 

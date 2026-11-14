@@ -4,7 +4,7 @@
 /*
  karabas_minig_top.v
 
- Quad Speccy (rtl/quadspeccy.v) on Karabas Mini rev. G (the pins of karabas-go-core-tsconf). As karabas_mini_top.v
+ QuadSpeccy (rtl/quadspeccy.v) on Karabas Mini rev. G (the pins of karabas-go-core-tsconf). As karabas_mini_top.v
  except: the PCM5102 (DAC_BCK / DAC_WS / DAC_DAT) instead of the sigma-delta outputs, MCU_SCK on a global clock pin
  (C9: IBUFG + BUFG, SCK up to 32 MHz; the FT812 gets the SCK before the BUFG, a BUFG drives clock pins only),
  MCU_IO<5:0>, the ESP32 lines; no FT_RESET, MIDI_CLK, MIDI_RESET_N, ESP_RESET_N, ESP_BOOT_N.

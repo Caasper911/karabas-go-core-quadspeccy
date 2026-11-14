@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Quad Speccy for the Karabas Go board (Xilinx Spartan-6 XC6SLX25, ISE 14.7, XST): up to four Pentagon 128 running
+QuadSpeccy for the Karabas Go board (Xilinx Spartan-6 XC6SLX25, ISE 14.7, XST): up to four Pentagon 128 running
 side by side, each in its own SDRAM bank, shown all four on one screen or the selected one full screen. Only the
-idea comes from the ReVerSE-U16 Quad Speccy (`../quadspeccy`); the code is new. The board infrastructure follows
+idea comes from the ReVerSE-U16 QuadSpeccy (`../quadspeccy`); the code is new. The board infrastructure follows
 karabas-go-core-tsconf (`../karabas-go-core-tsconf`): the shared modules of the git submodule `modules/`
 (karabas-go-modules: `kg_mcu2` of MCU link v2, `kg_pll`, `kg_l2_osd_overlay`, `kg_pcm5102`, memories), the
 Makefile build, `core.json` in the kgo2 format. Its `modules/CLAUDE.md` has the rules for those modules (Verilog-2001

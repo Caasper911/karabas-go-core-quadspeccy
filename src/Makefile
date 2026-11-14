@@ -1,4 +1,4 @@
-# Command line build of the Quad Speccy core (ISE 14.7), after karabas-go-core-tsconf/src/Makefile.
+# Command line build of the QuadSpeccy core (ISE 14.7), after karabas-go-core-tsconf/src/Makefile.
 #
 #   make                 all the boards (quadspeccy.kg): Karabas Go, Mini, Mini G
 #   make go|mini|minig   one board: synthesis, implementation, bitstream, its part of quadspeccy.kg
