@@ -55,6 +55,12 @@ module quadspeccy #(
 	output wire SDR_RAS_N,
 	inout wire [15:0] SDR_DQ,
 
+	// SRAM: the frame buffer of the quad view (quad_fb.v)
+	output wire [20:0] MA,
+	inout wire [15:0] MD,
+	output wire [1:0] MRD_N,
+	output wire [1:0] MWR_N,
+
 	// the SD card of the board
 	output wire sd_cs_n,
 	output wire sd_clk,
@@ -495,15 +501,6 @@ quad_mouse #(.NUM_MACHINES(NUM_MACHINES)) mouse(
 	.quad_set(ms_quad_set)
 );
 
-// quad view: line requests from video_out, the line buffers and border memories of the machines
-wire [1:0] q_go;
-wire [7:0] q_vc;
-wire q_buf;
-wire [5:0] q_addr;
-wire [8:0] q_brd_addr;
-wire [4*16-1:0] q_words;
-wire [4*3-1:0] q_brds;
-
 wire [3:0] m_beeper, m_mic, m_late, m_nz;
 
 // TR-DOS / Beta Disk: one controller (hrdy_fdc, the VG93 model of TS-Conf) on the floppy drive of the board, for the
@@ -679,14 +676,6 @@ generate
 				.b_ack(b_ack[gi]),
 				.b_q(b_q[gi*8 +: 8]),
 				.pix(m_pix[gi*4 +: 4]),
-				.quad(~full),
-				.q_go(q_go[gi / 2]),
-				.q_vc(q_vc),
-				.q_buf(q_buf),
-				.q_addr(q_addr),
-				.q_word(q_words[gi*16 +: 16]),
-				.q_brd_addr(q_brd_addr),
-				.q_brd(q_brds[gi*3 +: 3]),
 				.x_a(q_a[gi*16 +: 16]),
 				.x_do(q_do[gi*8 +: 8]),
 				.x_mc(q_mc[gi*7 +: 7]),
@@ -762,8 +751,6 @@ generate
 			assign hd_lba[gi*32 +: 32] = 32'd0;
 			assign hd_byte_out[gi*8 +: 8] = 8'd0;
 			assign m_pix[gi*4 +: 4] = 4'd0;
-			assign q_words[gi*16 +: 16] = 16'd0;
-			assign q_brds[gi*3 +: 3] = 3'd0;
 		end
 	end
 endgenerate
@@ -823,6 +810,30 @@ endgenerate
 // ---------------------------------------------------------------------------------------------
 // video
 
+// the frame buffer of the quad view in the SRAM: every machine writes its picture on its raster, video_out reads it
+wire fb_rd;
+wire [17:0] fb_raddr;
+wire [15:0] fb_word;
+
+quad_fb fbuf(
+	.clk(clk_bus),
+	.clk_sys(clk_sys),
+	.ce7(ce7),
+	.hc(hc),
+	.vc(vc),
+	.m_ce7(r_ce7),
+	.m_hc(r_hc),
+	.m_vc(r_vc),
+	.m_pix(m_pix),
+	.rd(fb_rd),
+	.rd_addr(fb_raddr),
+	.word(fb_word),
+	.MA(MA),
+	.MD(MD),
+	.MRD_N(MRD_N),
+	.MWR_N(MWR_N)
+);
+
 video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.clk(clk_bus),
 	.ce7(ce7),
@@ -835,7 +846,6 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.vga_x(vga_x),
 	.vga_p(vga_p),
 	.vga_l(vga_l),
-	.flash(frame[4]),
 	.full(full),
 	.sel(sel),
 	.rim_col(sw_frame_col),
@@ -843,13 +853,9 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.cur_y(cur_y),
 	.cur_on(cur_on),
 	.pix(m_pix[sel*4 +: 4]),
-	.q_go(q_go),
-	.q_vc(q_vc),
-	.q_buf(q_buf),
-	.q_addr(q_addr),
-	.q_words(q_words),
-	.q_brd_addr(q_brd_addr),
-	.q_brds(q_brds),
+	.fb_rd(fb_rd),
+	.fb_raddr(fb_raddr),
+	.fb_word(fb_word),
 	// diagnostics of the selected machine (docs/PLAN.md): SDRAM ready, ROM loader done, reads non-zero, no late
 	.diag_en(1'b0),   // hidden (the squares of the bring-up)
 	.diag_ok({~m_late[sel], m_nz[sel], ~ld_hold & ~ld_ovf, sdram_ready_b}),

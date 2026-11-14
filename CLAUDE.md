@@ -75,8 +75,11 @@ in the same change as the code they describe.
 - `rtl/video/video_out.v`: scan doubler to 896 x 640 at 28 MHz (the 50 Hz VGA raster of TS-Conf), blanking as 720 x
   576p50: visible 736 x 576, back porch 80 clocks (16 lit the picture on some monitors: black level clamp); the OSD
   (`kg_l2_osd_overlay`, bitmap 256 x 128) centres itself on `de` at scale 2, high active syncs (inverted around it),
-  2 clocks latency for picture, syncs and de. Quad view: quadrants 368 x 288, a VGA-timed line fetch per machine into `qbuf` (block
-  RAM, read one clock after `q_addr`, as `brd_mem`), not a frame buffer; `src/sim/run_vpx.sh` checks every pixel.
+  2 clocks latency for picture, syncs and de. Quad view: quadrants 368 x 288 from a frame buffer in the SRAM (`quad_fb.v`,
+  `rtl/mem/sram_ctrl.v`, 2M x 16 on all three boards): every machine writes its `pix` on its raster (4 pixels a word),
+  `video_out` reads a word every 4 clocks (`fb_rd` 2 clocks ahead); two frames per machine (`fb` flips at line 256,
+  read `~fb`: no tear, as the rasters are in lock step); `pentagon` always fetches on its raster.
+  `src/sim/run_vpx.sh` checks every pixel (with an SRAM model).
   (Scale 4/3 at 21 MHz was tried on the board: looked bad, removed.)
 - 1024 KB RAM as Profi in every `pentagon` (OSD Memory size 128K / 1024K per machine, soft switch 24 + n, `mem1024`;
   128K: #DFFD not decoded, AY ports as Pentagon): #DFFD (full address) 2..0 = page bits 5..3 of C000, the other bits

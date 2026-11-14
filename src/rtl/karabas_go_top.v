@@ -111,10 +111,6 @@ assign UART_CTS = 1'bZ;
 assign ESP_RESET_N = 1'bZ;
 assign ESP_BOOT_N = 1'bZ;
 
-assign MA = 21'd0;
-assign MD = 16'bZZZZZZZZZZZZZZZZ;
-assign MWR_N = 2'b11;
-assign MRD_N = 2'b11;
 
 assign SD_DO = 1'bZ;     // MISO of the card (SD_DI is MOSI)
 
@@ -158,6 +154,7 @@ quadspeccy #(.NUM_MACHINES(NUM_MACHINES), .ENABLE_FDC(1)) core(
 	.areset(areset),
 	.SDR_BA(SDR_BA), .SDR_A(SDR_A), .SDR_CLK(SDR_CLK), .SDR_DQM(SDR_DQM),
 	.SDR_WE_N(SDR_WE_N), .SDR_CAS_N(SDR_CAS_N), .SDR_RAS_N(SDR_RAS_N), .SDR_DQ(SDR_DQ),
+	.MA(MA), .MD(MD), .MRD_N(MRD_N), .MWR_N(MWR_N),
 	.sd_cs_n(SD_CS_N), .sd_clk(SD_CLK), .sd_mosi(SD_DI), .sd_miso(SD_DO),
 	.mcu_cs_n(MCU_CS_N), .mcu_sck(MCU_SCK), .mcu_mosi(MCU_MOSI), .mcu_miso(MCU_MISO),
 	.mcu_ft_ss(MCU_SPI_FT_CS_N), .mcu_sd2_ss(MCU_SPI_SD2_CS_N),

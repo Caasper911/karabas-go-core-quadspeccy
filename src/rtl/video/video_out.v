@@ -17,11 +17,10 @@
  Quad view (full = 0): the visible part of the raster, 736 clocks x 576 lines, holds four quadrants of
  368 x 288: the visible picture of the full screen (56 + 256 + 56 pixels, 48 + 192 + 48 lines), one
  pixel per clock of 28 MHz and one line per VGA line, half the size of the full screen in both
- directions. Machine 2 * row + column. A paper line comes from the line buffer of its machine, read
- from the SDRAM during the VGA line before it (q_go); the border has the colour of that native line
- (taken by the machine). The selected machine has a frame of rim_col (OSD), the machines that are not built
- are grey. The picture of the quad view is the screen memory at the time of the fetch, not the beam
- of the machine: multicolour and border effects are not exact there.
+ directions. Machine 2 * row + column. The pixels come from the frame buffer in the SRAM (quad_fb.v): the
+ beam of each machine as in the full screen, with border effects and multicolour; fb_rd asks for the word of four
+ pixels shown 2..5 clocks later, fb_word has it when they are shown. The selected machine has a frame of rim_col
+ (OSD), the machines that are not built are grey.
 
  VGA (vga_x 0..447 at 14 MHz, dl the native line shown), the porches of 720 x 576 p50: monitors take the black level
  at the start of the back porch; with the 16 clocks of before (0.57 us) some of them took the colour of the border
@@ -45,7 +44,6 @@ module video_out #(
 	input wire [8:0] vga_x,
 	input wire [9:0] vga_p,
 	input wire [9:0] vga_l,
-	input wire flash,
 
 	// mode: 1 the selected machine full screen, 0 the quad view; sel the selected machine
 	input wire full,
@@ -57,15 +55,10 @@ module video_out #(
 
 	input wire [3:0] pix,
 
-	// quad view: line requests to the machines of the top (q_go[0]: 0, 1) and bottom (q_go[1]: 2, 3) row,
-	// the line buffers and border memories of the machines (machine i: bits i)
-	output reg [1:0] q_go = 2'b00,
-	output reg [7:0] q_vc = 8'd0,
-	output reg q_buf = 1'b0,
-	output wire [5:0] q_addr,
-	input wire [4*16-1:0] q_words,
-	output wire [8:0] q_brd_addr,
-	input wire [4*3-1:0] q_brds,
+	// quad view: the frame buffer (quad_fb.v), a read of {machine, yq, word} and its word
+	output wire fb_rd,
+	output wire [17:0] fb_raddr,
+	input wire [15:0] fb_word,
 
 	// diagnostics: five squares (8 VGA pixels x 16 VGA lines) in the left border of the top border lines
 	// 264..271, x 388 + 12 * i: square i < 4 green when diag_ok[i], red when not; square 4 blinks white with
@@ -126,28 +119,21 @@ wire col = (qx >= 10'd368);
 wire qrow = (sy >= 10'd288);
 wire [8:0] xq = col ? qx - 10'd368 : qx[8:0];
 wire [8:0] yq = qrow ? sy - 10'd288 : sy[8:0];
-// the native position of the pixel
-wire [8:0] hq = (xq < 9'd56) ? xq + 9'd392 : xq - 9'd56;
-wire [8:0] vq = (yq < 9'd48) ? yq + 9'd272 : yq - 9'd48;
 wire [1:0] qm = {qrow, col};
 
-assign q_addr = {sy[0], hq[7:3]};
-assign q_brd_addr = vq;
+// the read of the frame buffer: in the clocks with vga_p[1:0] = 2 (qx[1:0] = 2: 784 and 112 are multiples of 4) the
+// word of the pixels 2..5 clocks later (vp2 = vga_p + 2; 896 at vga_p 894 is outside the picture)
+wire [9:0] vp2 = vga_p + 10'd2;
+wire [9:0] row2 = (vp2 >= 10'd784) ? ((ld == 10'd639) ? 10'd0 : ld + 1'd1) : ld;
+wire [9:0] sy2 = (row2 >= 10'd544) ? row2 - 10'd544 : row2 + 10'd96;
+wire [9:0] qx2 = (vp2 >= 10'd784) ? vp2 - 10'd784 : vp2 + 10'd112;
+wire col2 = (qx2 >= 10'd368);
+wire qrow2 = (sy2 >= 10'd288);
+wire [8:0] xq2 = col2 ? qx2 - 10'd368 : qx2[8:0];
+wire [8:0] yq2 = qrow2 ? sy2 - 10'd288 : sy2[8:0];
 
-
-// the request of the next line, at the start of a line of the picture
-wire [9:0] sy_n = (sy == 10'd639) ? 10'd0 : sy + 1'd1;
-wire [8:0] yq_n = (sy_n >= 10'd288) ? sy_n - 10'd288 : sy_n[8:0];
-wire [8:0] vq_n = (yq_n < 9'd48) ? yq_n + 9'd272 : yq_n - 9'd48;
-
-always @(posedge clk) begin
-	q_go <= 2'b00;
-	if (!full && vga_p == 10'd784 && sy_n < 10'd576 && vq_n < 9'd192) begin
-		q_go <= (sy_n >= 10'd288) ? 2'b10 : 2'b01;
-		q_vc <= vq_n[7:0];
-		q_buf <= sy_n[0];
-	end
-end
+assign fb_rd = !full && vga_p[1:0] == 2'd2 && qx2 < 10'd736 && sy2 < 10'd576;
+assign fb_raddr = {qrow2, col2, yq2, xq2[8:2]};
 
 // the cursor of the quad view (quad_mouse.v), 16 x 16: a row is {mask, white} (bit 15 the left pixel), black outline
 function [31:0] cursor_row;
@@ -176,27 +162,26 @@ wire [9:0] cdx = qx - cur_x;
 wire [9:0] cdy = sy - cur_y;
 wire [31:0] c_row = cursor_row(cdy[3:0]);
 
-reg qa_vis = 1'b0, qa_paper = 1'b0, qa_rim = 1'b0, qa_absent = 1'b0, qa_cur = 1'b0, qa_cur_w = 1'b0;
-reg [1:0] qa_m = 2'd0;
-reg [2:0] qa_bit = 3'd0;
-// q_words / q_brds come from the block RAMs of the machines, one clock after q_addr / q_brd_addr: the word of
-// stage a, taken from the machine of stage a
-wire [15:0] qa_word = q_words[qa_m*16 +: 16];
-wire [2:0] qa_brd = q_brds[qa_m*3 +: 3];
+reg qa_vis = 1'b0, qa_rim = 1'b0, qa_absent = 1'b0, qa_cur = 1'b0, qa_cur_w = 1'b0;
+reg [1:0] qa_sub = 2'd0;           // the pixel in the word of the frame buffer
 
 always @(posedge clk) begin
 	qa_vis <= q_vis;
-	qa_paper <= (hq < 9'd256) && (vq < 9'd192);
 	qa_rim <= (qm == sel) && (xq < 9'd2 || xq >= 9'd366 || yq < 9'd2 || yq >= 9'd286);
 	qa_absent <= (qm >= NUM_MACHINES);
 	qa_cur <= cur_on && cdx < 10'd16 && cdy < 10'd16 && c_row[16 + 15 - cdx[3:0]];
 	qa_cur_w <= c_row[15 - cdx[3:0]];
-	qa_m <= qm;
-	qa_bit <= hq[2:0];
+	qa_sub <= qx[1:0];
 end
 
-wire qa_ink = qa_word[15 - qa_bit] ^ (qa_word[7] & flash);
-wire [3:0] q_pix = qa_paper ? (qa_ink ? {qa_word[6], qa_word[2:0]} : {qa_word[6], qa_word[5:3]}) : {1'b0, qa_brd};
+reg [3:0] q_pix;
+always @*
+	case (qa_sub)
+		2'd0: q_pix = fb_word[15:12];
+		2'd1: q_pix = fb_word[11:8];
+		2'd2: q_pix = fb_word[7:4];
+		default: q_pix = fb_word[3:0];
+	endcase
 
 // the colour of the line buffer (full) or of the quad view
 wire [3:0] c_pix = full ? lb_q : q_pix;

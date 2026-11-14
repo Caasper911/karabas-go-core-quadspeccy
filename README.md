@@ -23,6 +23,8 @@ Pentagon 128 работают параллельно на одной плате.
 - Z-Controller в каждой машине (порты `#57` / `#77`, всегда включён, и при выключенном DivMMC): та же SD-карта
   или образ, что у DivMMC этой машины
 - VGA 31,25 кГц / 48,8 Гц (scan doubler), видимая часть 736 × 576, гашение как у 720 × 576p50; OSD-меню (Win+Esc)
+- quad-режим через кадровый буфер в SRAM: бордюрные эффекты и мультиколор во всех четырёх квадрантах как на весь
+  экран
 - платы: Karabas Go (VGA, PCM5102, дисковод), Karabas Mini и Mini G (HDMI с тем же растром и звуком, аналоговый
   выход у Mini / PCM5102 у Mini G, без дисковода); проверено на всех трёх платах
 - USB-клавиатура и два джойстика через MCU; в OSD «Keys to» Selected / All (All: в quad-режиме нажатия идут во
@@ -90,7 +92,7 @@ make go-report   # ресурсы и тайминг последней сбор�
 - [docs/PLAN.md](docs/PLAN.md): этапы и открытые вопросы
 - `modules/`: общие модули Karabas Go (сабмодуль karabas-go-modules)
 - `src/rtl/`: ядро `quadspeccy.v` и обёртки плат (`karabas_go_top.v`, `karabas_mini_top.v`, `karabas_minig_top.v`),
-  `zx/`, `sdram/`, `video/`, `hid/`, `tv80/`
+  `zx/`, `sdram/`, `mem/` (SRAM), `video/`, `hid/`, `tv80/`
 
 ## ROM
 
