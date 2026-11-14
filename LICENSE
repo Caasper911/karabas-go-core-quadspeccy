@@ -33,15 +33,25 @@ This repository contains code and data under different terms. Each part keeps th
    (https://github.com/andykarpov/karabas-go-core-tsconf, MIT License, copyright (c) 2024 Andy Karpov); the MIT
    License there and below covers only the changes made in those repositories, not the model of HRDY.
 
-4. karabas-go-modules (modules/, a git submodule)
+4. AY sound generator (src/rtl/sound/ay_psg.v, src/rtl/sound/turbosound.v)
+   ----------------------------------------------------------------------
+   The logic of the AY-3-8910 generator follows ym2149 of MikeJ and Sorgelig (ym2149.sv of the MiSTer cores):
+   copyright (c) MikeJ - Jan 2005, copyright (c) 2016-2019 Sorgelig, under their BSD-style license: redistribution
+   and use in source and synthesized forms, with or without modification, are permitted provided that the copyright
+   notice, the list of conditions and the disclaimer are retained in the source and reproduced in the documentation
+   of the synthesized form; the names of the authors may not be used to endorse or promote products derived from it
+   without prior written permission. THIS CODE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
+   EXPRESS OR IMPLIED WARRANTIES ARE DISCLAIMED. The rest of these two files is under the MIT License below.
+
+5. karabas-go-modules (modules/, a git submodule)
    ----------------------------------------------
    Andy Karpov and contributors: the terms of that repository.
 
-5. Everything else - MIT License
+6. Everything else - MIT License
    -----------------------------
    All other files of this repository (the QuadSpeccy core and the board tops, the SDRAM controller, video,
-   keyboard, mouse and sound, the build files, scripts, testbenches, test programs and documentation), and the
-   bitstreams (*.bin) built from them:
+   keyboard, mouse and sound except the parts in 4, the build files, scripts, testbenches, test programs and
+   documentation), and the bitstreams (*.bin) built from them:
 
    Copyright (c) 2026 the contributors of karabas-go-core-quadspeccy
 
