@@ -77,11 +77,15 @@ generate
 		reg [18:0] w_addr = 19'd0;
 		wire [3:0] pix = m_pix[k*4 +: 4];
 
-		// the pixel hd2 / vd2 has the colour pix
-		wire h_vis = (hd2 >= 9'd392) || (hd2 < 9'd312);
-		wire v_vis = (vd2 >= 9'd272) || (vd2 < 9'd240);
-		wire [8:0] xq = (hd2 >= 9'd392) ? hd2 - 9'd392 : hd2 + 9'd56;
-		wire [8:0] yq = (vd2 >= 9'd272) ? vd2 - 9'd272 : vd2 + 9'd48;
+		// the pixel hd2 / vd2 has the colour pix; the left border (392..447) is the start of the row of the next line
+		// (the beam draws it before the paper of that line): the border of a change of colour in the blank (Rage)
+		// was a line lower beside the paper
+		wire lb = (hd2 >= 9'd392);
+		wire [8:0] vr = !lb ? vd2 : (vd2 == 9'd319) ? 9'd0 : vd2 + 1'd1;
+		wire h_vis = lb || (hd2 < 9'd312);
+		wire v_vis = (vr >= 9'd272) || (vr < 9'd240);
+		wire [8:0] xq = lb ? hd2 - 9'd392 : hd2 + 9'd56;
+		wire [8:0] yq = (vr >= 9'd272) ? vr - 9'd272 : vr + 9'd48;
 
 		always @(posedge clk) begin
 			if (m_ce7[k]) begin

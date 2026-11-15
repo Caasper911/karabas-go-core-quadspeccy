@@ -31,8 +31,19 @@ localparam [31:0] BOFS = BANK << 20;   // word index of the bank in the model: {
 `ifndef MEMTEST
 `define MEMTEST 0
 `endif
+// SNA = 1 (run_sim.sh SNA=<file>): a 128K snapshot (sna2sim.py): its RAM preloaded, ROM 0 restores the registers
+`ifndef SNA
+`define SNA 0
+`endif
+// BRD_TRACE = n: from frame n on, every change of the border with the raster position
+`ifndef BRD_TRACE
+`define BRD_TRACE 0
+`endif
+`ifndef CPUSEL
+`define CPUSEL 1
+`endif
 `ifndef DIVMMC
-`define DIVMMC ((`TRDOS || `MEMTEST) ? 0 : 1)
+`define DIVMMC ((`TRDOS || `MEMTEST || `SNA) ? 0 : 1)
 `endif
 parameter DIVMMC = `DIVMMC;
 `ifndef SDEMU
@@ -109,6 +120,7 @@ sdram_model #(.ROWS(2048), .RB(11)) chip(
 
 // 128, 48, TR-DOS (FF), ESXDOS from 0x20000 (word 0x10000)
 initial $readmemh("roms.hex", chip.mem, BOFS + 'h10000, BOFS + 'h16FFF);
+initial if (`SNA) begin #1 $readmemh("snaram.hex", chip.mem, BOFS, BOFS + 'hFFFF); end
 
 wire ce7, ce_cpu, ce14, int_n, vga_half;
 wire [8:0] hc, vc, vga_x;
@@ -267,7 +279,7 @@ endgenerate
 wire ay_we;
 wire [4:0] ay_wa;
 wire [7:0] ay_wd;
-pentagon #(.CPU(`QUAD ? 2 : 1)) m(
+pentagon #(.CPU(`QUAD ? 2 : `CPUSEL)) m(
 	.clk(clk_bus), .reset(reset), .pause(1'b0),
 	.ce7(ce7), .ce_cpu(`QUAD ? (cslot == 3'd0) : ce_cpu), .hc(hc), .vc(vc), .int_n(int_n), .frame(frame),
 	.keys(40'd0), .kempston(8'd0), .tape_in(1'b0), .beeper(beeper), .mic(mic), .nmi(nmi_tb), .areset(~ready), .mem1024(`MEMTEST != 0),
@@ -284,6 +296,36 @@ pentagon #(.CPU(`QUAD ? 2 : 1)) m(
 	.late(late), .nz(),
 	.ay_we(ay_we), .ay_wa(ay_wa), .ay_wd(ay_wd), .ay_ra(5'd0), .ay_rd()
 );
+
+// BRD_TRACE: the border changes (frame, line, pixel of the raster in the clock of the change, the clock in the pixel)
+reg [2:0] brd_d = 3'd0;
+reg [1:0] subc = 2'd0;
+always @(posedge clk_bus) begin
+	subc <= ce7 ? 2'd0 : subc + 1'd1;
+	brd_d <= m.border;
+	if (`BRD_TRACE != 0 && frames_done >= `BRD_TRACE && m.border != brd_d)
+		$display("brd f%0d v%0d h%0d.%0d %0d pc %h", frames_done, vc, hc, subc, m.border, last_pc);
+end
+
+// BRD_TRACE (run FRAMES >= BRD_TRACE + 3): the frame BRD_TRACE + 1 as the machine shows it (pix of every ce7: of hc / vc two ce7 before), raster.hex
+// (320 lines of 448 pixels, line 0 the first of the paper) for render_raster.py
+reg [3:0] raster [0:320*448-1];
+reg [8:0] hc1 = 9'd0, hc2 = 9'd0, vc1 = 9'd0, vc2 = 9'd0;
+always @(posedge clk_bus)
+	if (ce7) begin
+		hc1 <= hc; hc2 <= hc1; vc1 <= vc; vc2 <= vc1;
+		if (`BRD_TRACE != 0 && frames_done == `BRD_TRACE + 1)
+			raster[vc2 * 448 + hc2] = pix;
+		if (`BRD_TRACE != 0 && frames_done == `BRD_TRACE + 2 && hc2 == 9'd447 && vc2 == 9'd319) begin : rd
+			integer f, n;
+			begin    // ISim has no $writememh
+				f = $fopen("raster.hex", "w");
+				for (n = 0; n < 320 * 448; n = n + 1)
+					$fdisplay(f, "%h", raster[n]);
+				$fclose(f);
+			end
+		end
+	end
 
 // the AY register writes of the machine (after the clearing at the reset)
 always @(posedge clk_bus)

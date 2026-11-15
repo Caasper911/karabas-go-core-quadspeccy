@@ -28,6 +28,7 @@ in the same change as the code they describe.
   into `src/`); `$$$$PATH` in `XIL` because
   it is expanded twice (inside `define board`). Linux: sources `/opt/Xilinx/14.7/ISE_DS/settings64.sh`.
 - `map` runs single-threaded (`-mt off` in `MAP_OPT`): with `-mt 2` it crashed in Global Placement without a message.
+  It still can for one cost table: then change `MAP_T_<board>` (Mini G is on 3).
 - XST `-opt_mode Area` (60 % slices against 66 % with Speed); `map -lc off`: `-lc area` packs worse (more slices).
   A change of the Makefile options does not rebuild: `touch karabas_go.ngc` before `make go`.
 - Sources are listed in `src/karabas_go.prj` (the shared modules as `"../modules/rtl/..."`; `kg_mcu2` needs `kg_l2_link`
@@ -55,6 +56,10 @@ in the same change as the code they describe.
   `TESTROM=<name>` assembles `src/sim/<name>.asm` into that place (`im2test`: IM 2 with a vector table, the
   testbench counts the interrupts its handler saw). The testbench compares every byte the CPU takes (`cpu_di`) with
   the model.
+  `SNA=<file>`: a 128K snapshot (`src/sim/sna2sim.py`: its RAM preloaded, ROM 0 and 1 a loader of its registers,
+  DivMMC off; e.g. `examples/RageEnd1.sna`, saved where the border effect runs). `BRD_TRACE=<frame>`: every
+  change of the border with `vc` / `hc`, and the frame after it as the machine draws it (`work/raster.hex`, run
+  FRAMES >= BRD_TRACE + 3; `tools/render_raster.py` makes a PNG of the whole raster). `CPUSEL=0` T80 instead of tv80.
   `SDIMG=1` (with `SDEMU=1`): the card is an 8 MB FAT16 image of `SDFILES` (`src/sim/mkfat.py`: directories / files
   in its root, `NAME=PATH` renames, no spaces in paths; e.g. the `SYS` / `BIN` of an ESXDOS card), reads from it,
   writes into it. `NMI_AT=<frame>` / `NMI2_AT=<frame>`: NMI as F11. Traces: `CPU_SPI=<frame>` every OUT of #EB / #E7
@@ -86,7 +91,10 @@ in the same change as the code they describe.
   `rtl/mem/sram_ctrl.v`, 2M x 16 on all three boards): every machine writes its `pix` on its raster (4 pixels a word),
   `video_out` reads a word every 4 clocks (`fb_rd` 2 clocks ahead); two frames per machine (`fb` flips at line 256,
   read `~fb`: no tear, as the rasters are in lock step); `pentagon` always fetches on its raster.
-  `src/sim/run_vpx.sh` checks every pixel (with an SRAM model).
+  `src/sim/run_vpx.sh` checks every pixel (with an SRAM model), quad and full screen.
+  The left border of a picture row is the pixels 392..447 of the native line before (the beam draws them before the
+  paper of the next line): `video_out` reads it from line `dl - 1` in the row that starts in `vga_half` 0, `quad_fb`
+  writes it into the row of `vc + 1` (a border change in the blank, Rage, was a step at the left of the paper).
   (Scale 4/3 at 21 MHz was tried on the board: looked bad, removed.)
 - 1024 KB RAM as Profi in every `pentagon` (OSD Memory size 128K / 1024K per machine, soft switch 24 + n, `mem1024`;
   128K: #DFFD not decoded, AY ports as Pentagon): #DFFD (full address) 2..0 = page bits 5..3 of C000, the other bits

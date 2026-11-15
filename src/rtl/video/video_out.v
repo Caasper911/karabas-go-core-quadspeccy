@@ -87,6 +87,13 @@ always @(posedge clk)
 	end
 
 wire [3:0] lb_q;
+// a row of the picture starts with the left border (vga_x 392..447) and goes on with the paper of the next VGA line:
+// the beam draws the left border of a native line before the paper of the line after it. Of the two rows of the line
+// dl, the one that starts in vga_half 0 (its paper in vga_half 1 of the same native line) takes the left border of
+// dl - 1 (the line being written, vc - 2: its pixels 392..447 are written only in vga_half 1); the one that starts in
+// vga_half 1 (its paper after vc changes) the left border of dl. Without this the border of a change of colour in the
+// blank (Rage) was a VGA line off beside the paper. vga_l[0] is vga_half.
+wire lb_before = (vga_x >= 9'd392) && !vga_l[0];
 
 kg_sdpram #(.DW(4), .AW(10)) linebuf (
 	.clka(clk),
@@ -95,7 +102,7 @@ kg_sdpram #(.DW(4), .AW(10)) linebuf (
 	.dina(pix),
 	.clkb(clk),
 	.enb(1'b1),
-	.addrb({~vc[0], vga_x}),
+	.addrb({~vc[0] ^ lb_before, vga_x}),
 	.doutb(lb_q)
 );
 

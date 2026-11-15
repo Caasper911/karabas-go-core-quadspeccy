@@ -32,11 +32,13 @@ if [ "${SDTEST:-0}" = 1 ]; then sjasmplus --nologo $([ "${ZC:-0}" = 1 ] && echo 
 # TESTROM=<name>: <name>.asm in the place of the ESXDOS ROM
 if [ -n "${TESTROM:-}" ]; then sjasmplus --nologo $TESTROM.asm > /dev/null && ESX=work/$TESTROM.bin; fi
 # TRDOS=1: trtest.asm as ROM 0 and ROM 2 (the TR-DOS slot), the machine with TR-DOS (DivMMC off)
-ROM0=../roms/128.rom ROM2=work/ff16k.bin
+ROM0=../roms/128.rom ROM1=../roms/48.rom ROM2=work/ff16k.bin
 if [ "${TRDOS:-0}" = 1 ]; then sjasmplus --nologo trtest.asm > /dev/null && ROM0=work/trtest0.bin ROM2=work/trtest2.bin; fi
 # MEMTEST=1: memtest.asm as ROM 0 (the 1024 KB of Profi, port #DFFD), DivMMC off
 if [ "${MEMTEST:-0}" = 1 ]; then sjasmplus --nologo memtest.asm > /dev/null && ROM0=work/memtest.bin; fi
-$PY ../../tools/rom2hex.py $ROM0 ../roms/48.rom $ROM2 $ESX work/roms.hex
+# SNA=<file>: a 128K snapshot (sna2sim.py): its RAM, ROM 0 and 1 a loader of its registers (its #7FFD may select either), DivMMC off
+if [ -n "${SNA:-}" ]; then $PY sna2sim.py "$SNA" work/snaram.hex work/snaload.bin && ROM0=work/snaload.bin ROM1=work/snaload.bin; fi
+$PY ../../tools/rom2hex.py $ROM0 $ROM1 $ROM2 $ESX work/roms.hex
 
 cat > work/tb.prj <<PRJ
 vhdl work "../../rtl/t80/T80_Pack.vhd"
@@ -80,7 +82,7 @@ PRJ
 
 cd work
 fuse -intstyle silent -incremental -lib unisims_ver -prj tb.prj -o $EXE -timeprecision_vhdl 1ps \
-	-d FRAMES=$FRAMES -d RESET_AT=${RESET_AT:-0} -d NMI_AT=${NMI_AT:-0} -d NMI2_AT=${NMI2_AT:-0} -d XFER_FROM=${XFER_FROM:-0} -d SDIMG=${SDIMG:-0} -d CPU_SPI=${CPU_SPI:-0} -d SDEMU=${SDEMU:-0} -d SDTEST=${SDTEST:-0} -d BANK=${BANK:-0} -d QUAD=${QUAD:-0} -d TRDOS=${TRDOS:-0} -d MEMTEST=${MEMTEST:-0} -d CUSTOM_ROM=$([ "$ESX" = ../roms/esxdos089.bin ] && [ "${TRDOS:-0}" = 0 ] && [ "${MEMTEST:-0}" = 0 ] && echo 0 || echo 1) work.tb_pentagon work.glbl > fuse.log 2>&1 || { tail -30 fuse.log; exit 1; }
+	-d FRAMES=$FRAMES -d RESET_AT=${RESET_AT:-0} -d NMI_AT=${NMI_AT:-0} -d NMI2_AT=${NMI2_AT:-0} -d XFER_FROM=${XFER_FROM:-0} -d SDIMG=${SDIMG:-0} -d CPU_SPI=${CPU_SPI:-0} -d SDEMU=${SDEMU:-0} -d SDTEST=${SDTEST:-0} -d BANK=${BANK:-0} -d QUAD=${QUAD:-0} -d TRDOS=${TRDOS:-0} -d MEMTEST=${MEMTEST:-0} -d SNA=$([ -n "${SNA:-}" ] && echo 1 || echo 0) -d BRD_TRACE=${BRD_TRACE:-0} -d CPUSEL=${CPUSEL:-1} -d CUSTOM_ROM=$([ "$ESX" = ../roms/esxdos089.bin ] && [ "${TRDOS:-0}" = 0 ] && [ "${MEMTEST:-0}" = 0 ] && [ -z "${SNA:-}" ] && echo 0 || echo 1) work.tb_pentagon work.glbl > fuse.log 2>&1 || { tail -30 fuse.log; exit 1; }
 echo "run all" > run.tcl
 echo "quit" >> run.tcl
 $EXE -intstyle silent -tclbatch run.tcl -testplusarg FRAMES=$FRAMES | tee sim.log | grep -vE "^(ISim|This is a|Time resolution|Simulator is doing|Finished circuit|WARNING: A WEBPACK)" || true

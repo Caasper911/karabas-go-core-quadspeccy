@@ -6,7 +6,8 @@
 //   (736 x 576, quadrants 368 x 288: 56 + 256 + 56 pixels, 48 + 192 + 48 lines, frame of the selected machine, grey
 //   for a machine not built) against the colour of the frame before the one being written (fid - 1: no tear), black
 //   outside it; the mouse cursor (16 x 16 at 500, 300) over it; quad frames 3 and 4;
-// - full screen (pix: one colour): 576 lines of 736 lit pixels from the same place;
+// - full screen (machine 0): every pixel of 576 lines of 736 from the same place;
+// - the left border of a row is that of the native line before (the beam draws it before the paper);
 // - every line 896 clocks, the picture 80 clocks after the end of hsync (back porch).
 // Ends with "tb_vpx: N errors". Run: src/sim/run_vpx.sh
 module tb_vpx;
@@ -84,7 +85,7 @@ quad_fb fbuf(.clk(clk), .clk_sys(clk_sys), .ce7(ce7), .hc(hc), .vc(vc), .m_ce7(m
 
 wire [7:0] r, g, b; wire hs, vs;
 video_out #(.NUM_MACHINES(3)) vo(.clk(clk), .ce7(ce7), .hc(hc), .vc(vc), .w_ce7(ce7), .w_hc(hc), .w_vc(vc),
-	.vga_x(vga_x), .vga_p(vga_p), .vga_l(vga_l), .full(full), .sel(sel), .rim_col(3'd4), .cur_x(10'd500), .cur_y(10'd300), .cur_on(1'b1), .pix(4'd5),
+	.vga_x(vga_x), .vga_p(vga_p), .vga_l(vga_l), .full(full), .sel(sel), .rim_col(3'd4), .cur_x(10'd500), .cur_y(10'd300), .cur_on(1'b1), .pix(m_pix[3:0]),
 	.fb_rd(fb_rd), .fb_raddr(fb_raddr), .fb_word(fb_word),
 	.diag_en(1'b0), .diag_ok(4'd0), .diag_blink(1'b0), .r(r), .g(g), .b(b), .hs(hs), .vs(vs), .de());
 
@@ -103,6 +104,7 @@ function [23:0] expect_of(input integer x, input integer y, input integer f);
 		m = ((y >= 288) ? 2 : 0) + ((x >= 368) ? 1 : 0);
 		vq = (yq < 48) ? yq + 272 : yq - 48;
 		hq = (xq < 56) ? xq + 392 : xq - 56;
+		if (xq < 56) vq = (vq == 0) ? 319 : vq - 1;   // the left border: of the line before (drawn before its paper)
 		if (x >= 500 && x < 516 && y >= 300 && y < 316 && cr[16 + 15 - (x - 500)])
 			expect_of = cr[15 - (x - 500)] ? 24'hFFFFFF : 24'h000000;
 		else if (m == sel && (xq < 2 || xq >= 366 || yq < 2 || yq >= 286))
@@ -111,6 +113,17 @@ function [23:0] expect_of(input integer x, input integer y, input integer f);
 			expect_of = 24'h303030;
 		else
 			expect_of = rgb_of(col_of(m, f, vq, hq));
+	end
+endfunction
+
+// full screen (machine 0): the clock x of row y, of the frame f
+function [23:0] expect_full(input integer x, input integer y, input integer f);
+	integer v, h;
+	begin
+		v = (y / 2 < 48) ? y / 2 + 272 : y / 2 - 48;
+		h = (x / 2 < 56) ? x / 2 + 392 : x / 2 - 56;   // a native pixel is two clocks
+		if (x / 2 < 56) v = (v == 0) ? 319 : v - 1;
+		expect_full = rgb_of(col_of(0, f, v, h));
 	end
 endfunction
 
@@ -158,12 +171,20 @@ always @(posedge clk) begin
 		end
 		// full screen: frame 5
 		if (full && frames == 5 && lit) begin
-			f_lines = f_lines + 1;
 			if (lit != 736 || (f_x0 >= 0 && first != f_x0)) begin
 				errors = errors + 1;
 				if (errors < 10) $display("full: line %0d: %0d lit from %0d", line, lit, first);
 			end
 			f_x0 = first;
+			for (i = 0; i < 736; i = i + 1) begin
+				checks = checks + 1;
+				if (line_rgb[first + i] !== expect_full(i, f_lines, f_line)) begin
+					errors = errors + 1;
+					if (errors < 10) $display("full: row %0d x %0d: %h, expected %h", f_lines, i, line_rgb[first + i],
+						expect_full(i, f_lines, f_line));
+				end
+			end
+			f_lines = f_lines + 1;
 		end
 		line = line + 1;
 		pix_line = 0;

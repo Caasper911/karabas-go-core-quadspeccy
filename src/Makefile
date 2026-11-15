@@ -55,7 +55,7 @@ JSON = core.json
 
 MAP_T_go = 2
 MAP_T_mini = 2
-MAP_T_minig = 2
+MAP_T_minig = 3   # with 2 map stopped in Global Placement without a message (2026-11-15, the left border fix)
 # map single-threaded (-mt off): with -mt 2 map crashed now and then in its Global Placement without a message (four
 # times in a day, then on every run of one netlist; the same netlist went through with -mt off)
 MAP_OPT = -logic_opt off -ol high -xe n -xt 0 -register_duplication off -r 4 -global_opt off -mt off -detail -ir off -pr b -lc off -power off
