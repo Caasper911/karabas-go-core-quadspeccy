@@ -85,7 +85,7 @@ quad_fb fbuf(.clk(clk), .clk_sys(clk_sys), .ce7(ce7), .hc(hc), .vc(vc), .m_ce7(m
 
 wire [7:0] r, g, b; wire hs, vs;
 video_out #(.NUM_MACHINES(3)) vo(.clk(clk), .ce7(ce7), .hc(hc), .vc(vc), .w_ce7(ce7), .w_hc(hc), .w_vc(vc),
-	.vga_x(vga_x), .vga_p(vga_p), .vga_l(vga_l), .full(full), .sel(sel), .rim_col(3'd4), .cur_x(10'd500), .cur_y(10'd300), .cur_on(1'b1), .pix(m_pix[3:0]),
+	.vga_x(vga_x), .vga_p(vga_p), .vga_l(vga_l), .full(full), .sel(sel), .rim_col(3'd4), .rim_on(1'b1), .cur_x(10'd500), .cur_y(10'd300), .cur_on(1'b1), .pix(m_pix[3:0]),
 	.fb_rd(fb_rd), .fb_raddr(fb_raddr), .fb_word(fb_word),
 	.diag_en(1'b0), .diag_ok(4'd0), .diag_blink(1'b0), .r(r), .g(g), .b(b), .hs(hs), .vs(vs), .de());
 
@@ -99,15 +99,17 @@ function [23:0] expect_of(input integer x, input integer y, input integer f);
 	reg [31:0] cr;
 	begin
 		cr = vo.cursor_row(y - 300);
-		yq = (y >= 288) ? y - 288 : y;
+		yq = (y >= 287) ? y - 287 : y;   // the bottom quadrants from row 287 (video_out QB), row 575 black
 		xq = (x >= 368) ? x - 368 : x;
-		m = ((y >= 288) ? 2 : 0) + ((x >= 368) ? 1 : 0);
+		m = ((y >= 287) ? 2 : 0) + ((x >= 368) ? 1 : 0);
 		vq = (yq < 48) ? yq + 272 : yq - 48;
 		hq = (xq < 56) ? xq + 392 : xq - 56;
 		if (xq < 56) vq = (vq == 0) ? 319 : vq - 1;   // the left border: of the line before (drawn before its paper)
-		if (x >= 500 && x < 516 && y >= 300 && y < 316 && cr[16 + 15 - (x - 500)])
+		if (y == 575)
+			expect_of = 24'h000000;
+		else if (x >= 500 && x < 516 && y >= 300 && y < 316 && cr[16 + 15 - (x - 500)])
 			expect_of = cr[15 - (x - 500)] ? 24'hFFFFFF : 24'h000000;
-		else if (m == sel && (xq < 2 || xq >= 366 || yq < 2 || yq >= 286))
+		else if (m == sel && (xq < 2 || xq >= 366 || yq < 2 || yq == 285 || yq == 286))
 			expect_of = 24'h00FF00;
 		else if (m >= 3)
 			expect_of = 24'h303030;
@@ -195,7 +197,7 @@ always @(posedge clk) begin
 		line = 0;
 		if (frames == 3 || frames == 4) begin
 			$display("tb_vpx: quad: %0d rows, %0d pixels checked, the picture %0d clocks after hsync", row, checks, x0);
-			if (row != 576) errors = errors + 1;
+			if (row != 575) errors = errors + 1;   // the last row (575) is black
 			row = -1;
 		end
 		if (frames == 4) begin

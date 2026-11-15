@@ -49,6 +49,7 @@ module video_out #(
 	input wire full,
 	input wire [1:0] sel,
 	input wire [2:0] rim_col,     // colour of the frame of the selected machine {G, R, B}, bright
+	input wire rim_on,            // the frame is shown (Frame colour Transparent: only for a while after a choice)
 	input wire [9:0] cur_x,       // the mouse cursor of the quad view (picture position of its top left pixel)
 	input wire [9:0] cur_y,
 	input wire cur_on,
@@ -115,17 +116,20 @@ wire [8:0] dl = (vc == 9'd0) ? 9'd319 : vc - 1'd1;
 // the doubled line shown (full screen: 2 * dl + half) and the screen position: q from the left edge of
 // the picture (after the back porch, p 784), sy from its top (line 544 = 2 * dl 272, the first visible line of the top
 // border); the picture is the visible part of the raster, 736 x 576, four quadrants of 368 x 288 (56 + 256 + 56,
-// 48 + 192 + 48: the border of the full screen)
+// 48 + 192 + 48: the border of the full screen). The bottom quadrants start one row early, at sy 287 (QB): the last
+// row of a quadrant is the line of INT (239), black (pentagon.v); the top quadrants end before it (rows 0..286), so no
+// black line between the top and the bottom ones when the border is lit; the last row of the screen (575) is black.
+localparam [9:0] QB = 10'd287;
 wire [9:0] ld = (vga_l < 10'd2) ? vga_l + 10'd638 : vga_l - 10'd2;
 wire [9:0] row = (vga_p >= 10'd784) ? ((ld == 10'd639) ? 10'd0 : ld + 1'd1) : ld;
 wire [9:0] sy = (row >= 10'd544) ? row - 10'd544 : row + 10'd96;
 wire [9:0] qx = (vga_p >= 10'd784) ? vga_p - 10'd784 : vga_p + 10'd112;
 
-wire q_vis = (qx < 10'd736) && (sy < 10'd576);
+wire q_vis = (qx < 10'd736) && (sy < 10'd575);
 wire col = (qx >= 10'd368);
-wire qrow = (sy >= 10'd288);
+wire qrow = (sy >= QB);
 wire [8:0] xq = col ? qx - 10'd368 : qx[8:0];
-wire [8:0] yq = qrow ? sy - 10'd288 : sy[8:0];
+wire [8:0] yq = qrow ? sy - QB : sy[8:0];
 wire [1:0] qm = {qrow, col};
 
 // the read of the frame buffer: in the clocks with vga_p[1:0] = 2 (qx[1:0] = 2: 784 and 112 are multiples of 4) the
@@ -135,11 +139,11 @@ wire [9:0] row2 = (vp2 >= 10'd784) ? ((ld == 10'd639) ? 10'd0 : ld + 1'd1) : ld;
 wire [9:0] sy2 = (row2 >= 10'd544) ? row2 - 10'd544 : row2 + 10'd96;
 wire [9:0] qx2 = (vp2 >= 10'd784) ? vp2 - 10'd784 : vp2 + 10'd112;
 wire col2 = (qx2 >= 10'd368);
-wire qrow2 = (sy2 >= 10'd288);
+wire qrow2 = (sy2 >= QB);
 wire [8:0] xq2 = col2 ? qx2 - 10'd368 : qx2[8:0];
-wire [8:0] yq2 = qrow2 ? sy2 - 10'd288 : sy2[8:0];
+wire [8:0] yq2 = qrow2 ? sy2 - QB : sy2[8:0];
 
-assign fb_rd = !full && vga_p[1:0] == 2'd2 && qx2 < 10'd736 && sy2 < 10'd576;
+assign fb_rd = !full && vga_p[1:0] == 2'd2 && qx2 < 10'd736 && sy2 < 10'd575;
 assign fb_raddr = {qrow2, col2, yq2, xq2[8:2]};
 
 // the cursor of the quad view (quad_mouse.v), 16 x 16: a row is {mask, white} (bit 15 the left pixel), black outline
@@ -174,7 +178,7 @@ reg [1:0] qa_sub = 2'd0;           // the pixel in the word of the frame buffer
 
 always @(posedge clk) begin
 	qa_vis <= q_vis;
-	qa_rim <= (qm == sel) && (xq < 9'd2 || xq >= 9'd366 || yq < 9'd2 || yq >= 9'd286);
+	qa_rim <= (qm == sel) && (xq < 9'd2 || xq >= 9'd366 || yq < 9'd2 || yq == 9'd285 || yq == 9'd286);   // above the black line 239
 	qa_absent <= (qm >= NUM_MACHINES);
 	qa_cur <= cur_on && cdx < 10'd16 && cdy < 10'd16 && c_row[16 + 15 - cdx[3:0]];
 	qa_cur_w <= c_row[15 - cdx[3:0]];
@@ -239,7 +243,7 @@ always @(posedge clk) begin
 		r <= qa_cur_w ? 8'hFF : 8'h00;
 		g <= qa_cur_w ? 8'hFF : 8'h00;
 		b <= qa_cur_w ? 8'hFF : 8'h00;
-	end else if (!full && qa_rim) begin
+	end else if (!full && qa_rim && rim_on) begin
 		r <= rim_col[1] ? 8'hFF : 8'h00;
 		g <= rim_col[2] ? 8'hFF : 8'h00;
 		b <= rim_col[0] ? 8'hFF : 8'h00;

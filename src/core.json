@@ -158,6 +158,16 @@
             "default": 4
         },
         {
+            "index": 22,
+            "type": "S",
+            "name": "Frame fade",
+            "options": [
+                "Off",
+                "On"
+            ],
+            "default": 0
+        },
+        {
             "index": 2,
             "type": "N",
             "name": "Pause",

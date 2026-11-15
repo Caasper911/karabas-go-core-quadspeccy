@@ -55,7 +55,7 @@ reg b0_d = 1'b0, b2_d = 1'b0;
 // double click: vertical syncs since the last press of the left button (20: none pending), its quadrant
 reg [4:0] dc_t = 5'd20;
 reg [1:0] dc_q = 2'd0;
-wire [1:0] cur_q = {cur_y >= 10'd288, cur_x >= 10'd368};
+wire [1:0] cur_q = {cur_y >= 10'd287, cur_x >= 10'd368};   // the bottom quadrants from row 287 (video_out QB)
 
 // the cursor of the quad view: a new position clamped to the picture
 wire [10:0] nx = {1'b0, cur_x} + {{3{ms_x[7]}}, ms_x};

@@ -268,7 +268,8 @@ wire [1:0] sw_fdd_core = softsw[23*8 +: 2];    // FDD: the machine with TR-DOS a
 wire [3:0] sw_mem1024 = {softsw[27*8], softsw[26*8], softsw[25*8], softsw[24*8]};
 // Sound of machine n (28 + n): 0 only when it is selected, 1 always
 wire [3:0] sw_snd_all = {softsw[31*8], softsw[30*8], softsw[29*8], softsw[28*8]};
-// 22: not used (was Mouse middle; the middle button always goes back to the quad view)
+// 22: Frame fade (On: the frame of the selected machine only for 2 s after a choice; was Mouse middle until 2026-11)
+wire sw_fade = softsw[22*8];
 
 // ---------------------------------------------------------------------------------------------
 // keyboard
@@ -277,6 +278,7 @@ wire [39:0] kbd_keys;
 wire [7:0] kbd_kempston;
 wire [1:0] kbd_sel;
 wire kbd_full_tgl;
+wire kbd_sel_hit;      // a choice of the machine (keyboard or mouse): Frame fade
 wire ms_sel_we;        // the mouse chose a machine in the quad view (quad_mouse)
 wire [1:0] ms_sel_in;
 
@@ -299,7 +301,8 @@ zx_kbd kbd(
 	.sel_we(ms_sel_we),
 	.sel_in(ms_sel_in),
 	.sel(kbd_sel),
-	.full_tgl(kbd_full_tgl)
+	.full_tgl(kbd_full_tgl),
+	.sel_hit(kbd_sel_hit)
 );
 
 // the machine with the keyboard (machines that are not built are not selected)
@@ -477,6 +480,19 @@ zx_timing timing(
 // mouse: the Kempston mouse of the selected machine in the full screen, the cursor of the quad view (quad_mouse.v)
 wire [7:0] vo_r, vo_g, vo_b;
 wire vo_hs, vo_vs, vo_de;
+
+// Frame fade: the frame for 98 VGA frames (2 s) after Win + 1..4 / Win + arrow / a click, then hidden
+reg [6:0] rim_show = 7'd0;
+reg rim_vs_d = 1'b1;
+always @(posedge clk_bus) begin
+	rim_vs_d <= vo_vs;
+	if (kbd_sel_hit)
+		rim_show <= 7'd98;
+	else if (rim_show != 7'd0 && rim_vs_d && !vo_vs)   // vsync (low active) begins
+		rim_show <= rim_show - 1'd1;
+end
+wire rim_on = !sw_fade || rim_show != 7'd0;
+
 wire [4*24-1:0] ms_q;
 wire [9:0] cur_x, cur_y;
 wire cur_on;
@@ -849,6 +865,7 @@ video_out #(.NUM_MACHINES(NUM_MACHINES)) video(
 	.full(full),
 	.sel(sel),
 	.rim_col(sw_frame_col),
+	.rim_on(rim_on),
 	.cur_x(cur_x),
 	.cur_y(cur_y),
 	.cur_on(cur_on),

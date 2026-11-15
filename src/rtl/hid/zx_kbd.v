@@ -46,7 +46,8 @@ module zx_kbd (
 	input wire sel_we,             // the machine chosen by the mouse in the quad view (quad_mouse)
 	input wire [1:0] sel_in,
 	output reg [1:0] sel = 2'd0,
-	output reg full_tgl = 1'b0
+	output reg full_tgl = 1'b0,
+	output reg sel_hit = 1'b0      // a clock: Win + 1..4 / Win + arrow / the mouse chose a machine (Frame fade)
 );
 
 localparam K_CS = 0,  K_Z = 1,  K_X = 2,  K_C = 3,  K_V = 4;
@@ -226,6 +227,7 @@ wire [39:0] joys = joy_keys(joy_type_l, joy_l) | joy_keys(joy_type_r, joy_r);
 
 always @(posedge clk) begin
 	full_tgl <= 1'b0;
+	sel_hit <= 1'b0;
 	if (reset) begin
 		idx <= 3'd0;
 		acc <= 40'd0;
@@ -247,18 +249,22 @@ always @(posedge clk) begin
 		// hotkeys on the change of the key with Win held
 		hk_num_prev <= hk_num_n;
 		hk_tilde_prev <= hk_tilde_n;
-		if (win && hk_num_n != 3'd0 && hk_num_n != hk_num_prev)
+		if (win && hk_num_n != 3'd0 && hk_num_n != hk_num_prev) begin
 			sel <= hk_num_n[1:0] - 2'd1;
+			sel_hit <= 1'b1;
+		end
 		if (win && hk_tilde_n && !hk_tilde_prev)
 			full_tgl <= 1'b1;
 		hk_arr_prev <= hk_arr_n;
-		if (win && hk_arr_n != 3'd0 && hk_arr_n != hk_arr_prev)
+		if (win && hk_arr_n != 3'd0 && hk_arr_n != hk_arr_prev) begin
+			sel_hit <= 1'b1;
 			case (hk_arr_n[1:0])
 				2'd0: sel[0] <= 1'b1;   // right
 				2'd1: sel[0] <= 1'b0;   // left
 				2'd2: sel[1] <= 1'b1;   // down
 				default: sel[1] <= 1'b0;   // up
 			endcase
+		end
 	end else begin
 		idx <= idx + 1'd1;
 		acc <= acc_n;
@@ -268,8 +274,10 @@ always @(posedge clk) begin
 		hk_arr <= hk_arr_n;
 	end
 	// the mouse (a clock, any clock: not only in the step of the hotkeys)
-	if (sel_we && !reset)
+	if (sel_we && !reset) begin
 		sel <= sel_in;
+		sel_hit <= 1'b1;
+	end
 end
 
 endmodule

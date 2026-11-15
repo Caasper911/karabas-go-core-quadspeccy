@@ -701,7 +701,10 @@ end
 // pixels: stage 1 loads / shifts, stage 2 makes the colour
 
 wire paper = (vc < 9'd192) && (hc < 9'd256);
-wire blank = (hc >= 9'd320 && hc < 9'd384) || (vc >= 9'd240 && vc < 9'd256);
+// black: the sync, and the last visible row (the line of INT, 239: its paper part, and the left border before it, the
+// pixels 392..447 of line 238; the left border of 239 belongs to the row of 240, in the blank anyway)
+wire blank = (hc >= 9'd320 && hc < 9'd384) || (vc >= 9'd240 && vc < 9'd256) ||
+	(vc == 9'd239 && hc < 9'd392) || (vc == 9'd238 && hc >= 9'd392);
 
 reg [7:0] shreg = 8'd0;
 reg [7:0] attr_r = 8'd0;
