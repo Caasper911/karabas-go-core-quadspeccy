@@ -75,15 +75,15 @@
     ],
     "boards": {
         "go": {
-            "build": "26111720",
+            "build": "26111721",
             "bitstream": "karabas_go.bin"
         },
         "mini": {
-            "build": "26111720",
+            "build": "26111721",
             "bitstream": "karabas_mini.bin"
         },
         "minig": {
-            "build": "26111720",
+            "build": "26111721",
             "bitstream": "karabas_minig.bin"
         }
     },
@@ -227,6 +227,12 @@
         },
         {
             "type": "-"
+        },
+        {
+            "index": 32,
+            "type": "T",
+            "name": "NMI All",
+            "hotkey": "Menu+F11"
         },
         {
             "index": 6,

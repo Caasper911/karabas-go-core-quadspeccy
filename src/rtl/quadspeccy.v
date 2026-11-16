@@ -19,8 +19,8 @@
  Win + ` full screen / quad.
  OSD (core.json "osd", the "index" of the items): 0 joystick L, 1 joystick R, 2 pause, 3 reset of the
  selected machine (F12), 4 reset of all (Win+F12), 5 colour of the frame of the selected machine in the
- quad view (ZX colour, default 4 green), 6 NMI of the selected machine (F11), per machine n on its
- page "Core n+1": 7 + 2n DivMMC on (default on), 8 + 2n SD card: the card of the board / the image
+ quad view (ZX colour, default 4 green), 6 NMI of the selected machine (F11), 32 NMI of all (Win+F11),
+ per machine n on its page "Core n+1": 7 + 2n DivMMC on (default on), 8 + 2n SD card: the card of the board / the image
  (default image), and the F item of the image, slot n of the file mounter.
 
  DivMMC and Z-Controller (docs/ARCHITECTURE.md): the SPI of machine n goes to the card of the board (SD_*) when it chose
@@ -182,15 +182,15 @@ wire [5:0] osd_pw;
 wire [7:0] ms_x, ms_y, ms_z, ms_b;
 wire ms_wr;
 
-// the OSD switches (core.json "osd", the "index" of the items): 32 registers of 8 bits, switch n = softsw[n*8 +: 8];
+// the OSD switches (core.json "osd", the "index" of the items): 33 registers of 8 bits, switch n = softsw[n*8 +: 8];
 // 7..14: per machine n: 7 + 2n DivMMC on, 8 + 2n SD card (0 the card of the board, 1 the image); 24 + n Memory size.
 // SW_INIT: the defaults of core.json until the MCU sends them.
-wire [32*8-1:0] softsw;
+wire [33*8-1:0] softsw;
 
 kg_mcu2 #(
 	.CAPS(16'h0010),             // bit 4: LD_READY (the ROM loader FIFO)
-	.SW_N(32),
-	.SW_INIT(256'h00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00),
+	.SW_N(33),
+	.SW_INIT(264'h00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_00_01_01_01_01_01_01_01_01_00_04_00_00_00_01_00),
 	.CS_FILTER(3),
 	.ENABLE_OSD(1),
 	.ENABLE_IMG(1),
@@ -257,6 +257,7 @@ wire sw_reset = softsw[24];
 wire sw_reset_all = softsw[32];
 wire [2:0] sw_frame_col = softsw[42:40];
 wire sw_nmi = softsw[48];
+wire sw_nmi_all = softsw[32*8];   // NMI All (Win+F11): every machine
 wire [3:0] sw_divmmc = {softsw[13*8], softsw[11*8], softsw[9*8], softsw[7*8]};
 wire [3:0] sw_sd_img = {softsw[14*8], softsw[12*8], softsw[10*8], softsw[8*8]};
 wire [3:0] sw_acb = {softsw[18*8], softsw[17*8], softsw[16*8], softsw[15*8]};   // AY mix of machine n: 0 ABC, 1 ACB
@@ -657,7 +658,7 @@ generate
 				.kempston((sel == gi || (sw_keys_all && !full)) ? kbd_kempston : 8'd0),
 				.mouse(ms_q[gi*24 +: 24]),
 				.tape_in(m_tape_in[gi]),
-				.nmi(sw_nmi && sel == gi),
+				.nmi((sw_nmi && sel == gi) || sw_nmi_all),
 				// power on for the DivMMC (a reset keeps its state): the start of the core and the ROM loading
 				.areset(areset | ld_hold),
 				.mem1024(sw_mem1024[gi]),

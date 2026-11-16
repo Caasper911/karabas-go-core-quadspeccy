@@ -361,7 +361,8 @@ deathsoft / titus, см. `rtl/vg93/README.md`); работает на `clk_bus`,
     первым;
   - *Real* — карта №2 платы (`SD_*`; карта №1 у MCU). Владеет одна машина: младшая с Real (DivMMC
     не важен). У остальных с Real карты нет (MISO = 1).
-- **NMI** (F11) подаётся выбранной машине: меню ESXDOS через automap по `0066`.
+- **NMI** (F11) подаётся выбранной машине: меню ESXDOS через automap по `0066`. **NMI All** (Win+F11) — всем
+  машинам сразу.
 
 ## Клавиатура и горячие клавиши
 
@@ -376,6 +377,7 @@ deathsoft / titus, см. `rtl/vg93/README.md`); работает на `clk_bus`,
 | F12 (OSD Reset) | сброс выбранной машины |
 | Win+F12 (OSD Reset All) | сброс всех машин, очистка ОЗУ DivMMC |
 | F11 (OSD NMI) | NMI выбранной машины |
+| Win+F11 (OSD NMI All) | NMI всех машин |
 
 Пока Win нажата, клавиши в машину не идут. Пункт OSD «Keys to» (общий): Selected — клавиатура и джойстики идут в
 выбранную машину; All — в quad-режиме во все машины сразу (в полноэкранном режиме всё равно только в выбранную). Звук (beeper / MIC / AY) берётся у выбранной машины.
@@ -450,12 +452,12 @@ ACB — левый 2A + C, правый 2B + C; голоса слышных ма
 
 ## Переключатели OSD
 
-Регистры — `SW` у `kg_mcu2` (32 по 8 бит, переключатель n = `softsw[n*8 +: 8]`, MCU шлёт их SETVAL; в link v1 был
+Регистры — `SW` у `kg_mcu2` (33 по 8 бит, переключатель n = `softsw[n*8 +: 8]`, MCU шлёт их SETVAL; в link v1 был
 `kg_soft_switches`). Индексы заданы полем `index` пунктов `core.json` (раньше совпадали с порядком):
 0 Joystick L, 1 Joystick R, 2 Pause, 3 Reset (выбранной), 4 Reset All, 5 Frame colour (цвет рамки
 выбранной машины, цвет Спектрума {G, R, B} яркий, по умолчанию 4 — зелёный), 6 NMI (выбранной),
 7 + 2n DivMMC машины n (по умолчанию On), 8 + 2n SD card машины n (Real / Image, по умолчанию Image), 15 + n AY mix машины n (ABC / ACB, по
-умолчанию ABC), 28 + n Sound машины n (Selected / Always, по умолчанию Selected), 19 Tape in (Board / Core, по умолчанию Board), 20 Tape out (Core 1..4, по умолчанию Core 1), 21 Keys to (Selected / All, по умолчанию Selected), 22 Frame fade (Off / On, по умолчанию Off; был Mouse middle), 23 FDD (Core 1..4, по умолчанию Core 1), 24 + n Memory size машины n (128K / 1024K, по умолчанию 128K).
+умолчанию ABC), 28 + n Sound машины n (Selected / Always, по умолчанию Selected), 19 Tape in (Board / Core, по умолчанию Board), 20 Tape out (Core 1..4, по умолчанию Core 1), 21 Keys to (Selected / All, по умолчанию Selected), 22 Frame fade (Off / On, по умолчанию Off; был Mouse middle), 23 FDD (Core 1..4, по умолчанию Core 1), 24 + n Memory size машины n (128K / 1024K, по умолчанию 128K), 32 NMI All (Win+F11, NMI всех машин; пункт стоит перед NMI, хоткей с модификатором раньше).
 Пункты машин на страницах 1..4 OSD (главная страница: «Core 1..4»); образ SD — пункт F, слот n. Значения по умолчанию
 дублируются в `SW_INIT` у `kg_mcu2` в `quadspeccy.v`, чтобы ядро стартовало с ними до первой команды MCU. Новый пункт сдвигает индексы
 следующих за ним пунктов, поэтому в top их надо поправить вместе с `core.json`.
